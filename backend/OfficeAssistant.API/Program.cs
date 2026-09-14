@@ -6,6 +6,7 @@ using Microsoft.IdentityModel.Tokens;
 
 using OfficeAssistant.API.Data;
 using OfficeAssistant.API.Services;
+using OfficeAssistant.API.Services.AI;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -63,6 +64,8 @@ builder.Services.Configure<JwtSettings>(
 // Mỗi HTTP request sẽ sử dụng một instance của JwtService.
 builder.Services.AddScoped<JwtService>();
 
+// Đăng ký AI Service để Controller có thể sử dụng.
+builder.Services.AddScoped<IAIService, OpenAIService>();
 // ============================================================
 // CẤU HÌNH AUTHENTICATION - JWT BEARER
 // ============================================================
