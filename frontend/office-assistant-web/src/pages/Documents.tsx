@@ -4,6 +4,25 @@ import { FileText, Plus, Search, Pencil, Trash2, X } from "lucide-react";
 
 import api from "../services/api";
 
+import axios from "axios";
+
+// =========================================================
+// DỮ LIỆU API AI
+// =========================================================
+
+// Dữ liệu gửi từ React lên API AI.
+interface GenerateDocumentRequest {
+  documentType: string;
+  templateName: string;
+  userPrompt: string;
+}
+
+// Dữ liệu API AI trả về cho React.
+interface GenerateDocumentResponse {
+  message: string;
+  content: string;
+}
+
 type DocumentItem = {
   documentId: number;
   title: string;
@@ -66,6 +85,101 @@ function Documents() {
     documentType: "Thông báo",
     content: "",
   });
+
+  // =========================================================
+  // STATE CHO CHỨC NĂNG SOẠN THẢO BẰNG AI
+  // =========================================================
+
+  // Loại văn bản mà người dùng muốn AI soạn.
+  const [aiDocumentType, setAiDocumentType] = useState("Thông báo");
+
+  // Tên mẫu văn bản mà người dùng muốn sử dụng.
+  const [aiTemplateName, setAiTemplateName] = useState("Thông báo hành chính");
+
+  // Yêu cầu cụ thể gửi cho AI.
+  const [aiPrompt, setAiPrompt] = useState("");
+
+  // Nội dung văn bản do Gemini tạo ra.
+  const [aiContent, setAiContent] = useState("");
+
+  // Trạng thái đang gọi API Gemini.
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+
+  // Lỗi riêng của chức năng AI.
+  const [aiError, setAiError] = useState("");
+
+  /**
+   * Gọi API backend để Gemini sinh nội dung văn bản.
+   *
+   * Frontend không gọi Gemini trực tiếp.
+   * Frontend chỉ gọi ASP.NET Core API.
+   *
+   * Luồng:
+   *
+   * React
+   *   ↓
+   * ASP.NET Core API
+   *   ↓
+   * Gemini API
+   *   ↓
+   * ASP.NET Core
+   *   ↓
+   * React
+   */
+  const handleGenerateAI = async () => {
+    // Kiểm tra yêu cầu của người dùng.
+    if (!aiPrompt.trim()) {
+      setAiError("Vui lòng nhập yêu cầu cần AI soạn thảo.");
+
+      return;
+    }
+
+    // Xóa lỗi cũ.
+    setAiError("");
+
+    // Hiển thị trạng thái đang xử lý.
+    setIsGeneratingAI(true);
+
+    try {
+      // Gọi API backend.
+      //
+      // Không cần tự lấy token ở đây.
+      // File services/api.ts của bạn đã có interceptor
+      // tự động thêm:
+      //
+      // Authorization: Bearer <JWT>
+      const response = await api.post<GenerateDocumentResponse>(
+        "/AI/generate-document",
+        {
+          documentType: aiDocumentType,
+          templateName: aiTemplateName,
+          userPrompt: aiPrompt,
+        } satisfies GenerateDocumentRequest,
+      );
+
+      // Lấy nội dung Gemini trả về.
+      setAiContent(response.data.content);
+
+      // Xóa lỗi nếu trước đó có lỗi.
+      setAiError("");
+    } catch (error) {
+      console.error("Lỗi khi gọi API AI:", error);
+
+      // AxiosError có response nếu backend thực sự trả về HTTP error.
+      if (axios.isAxiosError(error)) {
+        const message = error.response?.data?.message;
+
+        setAiError(message ?? "Không thể kết nối tới dịch vụ AI.");
+      } else if (error instanceof Error) {
+        setAiError(error.message);
+      } else {
+        setAiError("Đã xảy ra lỗi khi gọi AI.");
+      }
+    } finally {
+      // Tắt loading dù thành công hay thất bại.
+      setIsGeneratingAI(false);
+    }
+  };
 
   // =========================================================
   // LẤY DANH SÁCH VĂN BẢN
@@ -340,6 +454,164 @@ function Documents() {
           {error}
         </div>
       )}
+
+      {/* =====================================================
+          SOẠN THẢO VĂN BẢN BẰNG AI
+          ===================================================== */}
+
+      <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        {/* Tiêu đề khu vực AI */}
+        <div className="mb-5 flex items-center gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-100 text-xl">
+            ✨
+          </div>
+
+          <div>
+            <h2 className="text-lg font-bold text-slate-800">
+              Soạn thảo văn bản bằng AI
+            </h2>
+
+            <p className="mt-1 text-sm text-slate-500">
+              Nhập yêu cầu để Gemini hỗ trợ soạn thảo nội dung văn bản.
+            </p>
+          </div>
+        </div>
+
+        {/* Loại văn bản + mẫu văn bản */}
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {/* Loại văn bản */}
+          <div>
+            <label
+              htmlFor="ai-document-type"
+              className="mb-2 block text-sm font-medium text-slate-700"
+            >
+              Loại văn bản
+            </label>
+
+            <select
+              id="ai-document-type"
+              value={aiDocumentType}
+              onChange={(event) => setAiDocumentType(event.target.value)}
+              disabled={isGeneratingAI}
+              className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
+            >
+              {documentTypes.map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Mẫu văn bản */}
+          <div>
+            <label
+              htmlFor="ai-template-name"
+              className="mb-2 block text-sm font-medium text-slate-700"
+            >
+              Mẫu văn bản
+            </label>
+
+            <select
+              id="ai-template-name"
+              value={aiTemplateName}
+              onChange={(event) => setAiTemplateName(event.target.value)}
+              disabled={isGeneratingAI}
+              className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
+            >
+              <option value="Thông báo hành chính">Thông báo hành chính</option>
+
+              <option value="Công văn hành chính">Công văn hành chính</option>
+
+              <option value="Báo cáo hành chính">Báo cáo hành chính</option>
+
+              <option value="Biên bản hành chính">Biên bản hành chính</option>
+
+              <option value="Quyết định hành chính">
+                Quyết định hành chính
+              </option>
+            </select>
+          </div>
+        </div>
+
+        {/* Yêu cầu cho AI */}
+        <div className="mt-4">
+          <label
+            htmlFor="ai-prompt"
+            className="mb-2 block text-sm font-medium text-slate-700"
+          >
+            Yêu cầu soạn thảo
+          </label>
+
+          <textarea
+            id="ai-prompt"
+            value={aiPrompt}
+            onChange={(event) => setAiPrompt(event.target.value)}
+            disabled={isGeneratingAI}
+            rows={5}
+            placeholder="Ví dụ: Soạn thông báo về việc nghỉ lễ Quốc khánh 02/9, yêu cầu cán bộ nhân viên hoàn thành công việc trước kỳ nghỉ..."
+            className="w-full resize-y rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
+          />
+        </div>
+
+        {/* Lỗi AI */}
+        {aiError && (
+          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {aiError}
+          </div>
+        )}
+
+        {/* Nút tạo AI */}
+        <div className="mt-4 flex justify-end">
+          <button
+            type="button"
+            onClick={handleGenerateAI}
+            disabled={isGeneratingAI}
+            className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isGeneratingAI ? "Đang tạo văn bản..." : "✨ Tạo văn bản bằng AI"}
+          </button>
+        </div>
+      </section>
+
+      {/* =====================================================
+          KẾT QUẢ AI
+          ===================================================== */}
+
+      {aiContent && (
+        <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="mb-4 flex flex-col justify-between gap-3 md:flex-row md:items-center">
+            <div>
+              <h2 className="text-lg font-bold text-slate-800">
+                Nội dung do AI tạo
+              </h2>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Bạn có thể kiểm tra và chỉnh sửa nội dung trước khi lưu.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => navigator.clipboard.writeText(aiContent)}
+              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            >
+              Sao chép
+            </button>
+          </div>
+
+          <textarea
+            value={aiContent}
+            onChange={(event) => setAiContent(event.target.value)}
+            rows={20}
+            className="w-full resize-y rounded-xl border border-slate-300 px-4 py-3 font-mono text-sm leading-6 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+          />
+        </section>
+      )}
+
+      {/* =====================================================
+          SEARCH + FILTER
+          ===================================================== */}
 
       {/* =====================================================
           SEARCH + FILTER
