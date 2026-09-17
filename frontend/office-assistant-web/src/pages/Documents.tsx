@@ -23,6 +23,23 @@ interface GenerateDocumentResponse {
   content: string;
 }
 
+// =========================================================
+// DỮ LIỆU MẪU VĂN BẢN
+// =========================================================
+
+// Đại diện cho một mẫu văn bản lấy từ API.
+// Dữ liệu này tương ứng với bảng DocumentTemplates
+// trong SQL Server.
+type DocumentTemplate = {
+  documentTemplateId: number;
+  templateName: string;
+  documentType: string;
+  filePath: string | null;
+  description: string | null;
+  isActive: boolean;
+  createdAt: string;
+};
+
 type DocumentItem = {
   documentId: number;
   title: string;
@@ -56,6 +73,12 @@ function Documents() {
 
   // Danh sách văn bản.
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
+
+  // Danh sách mẫu văn bản lấy từ SQL Server.
+  const [templates, setTemplates] = useState<DocumentTemplate[]>([]);
+
+  // Trạng thái tải danh sách mẫu.
+  const [templatesLoading, setTemplatesLoading] = useState(true);
 
   // Trạng thái tải danh sách.
   const [loading, setLoading] = useState(true);
@@ -94,7 +117,7 @@ function Documents() {
   const [aiDocumentType, setAiDocumentType] = useState("Thông báo");
 
   // Tên mẫu văn bản mà người dùng muốn sử dụng.
-  const [aiTemplateName, setAiTemplateName] = useState("Thông báo hành chính");
+  const [aiTemplateName, setAiTemplateName] = useState("");
 
   // Yêu cầu cụ thể gửi cho AI.
   const [aiPrompt, setAiPrompt] = useState("");
@@ -130,6 +153,13 @@ function Documents() {
     // Kiểm tra yêu cầu của người dùng.
     if (!aiPrompt.trim()) {
       setAiError("Vui lòng nhập yêu cầu cần AI soạn thảo.");
+
+      return;
+    }
+
+    // Kiểm tra mẫu văn bản.
+    if (!aiTemplateName.trim()) {
+      setAiError("Vui lòng chọn mẫu văn bản.");
 
       return;
     }
@@ -182,16 +212,53 @@ function Documents() {
   };
 
   // =========================================================
-  // LẤY DANH SÁCH VĂN BẢN
+  // LẤY DANH SÁCH MẪU VĂN BẢN
   // =========================================================
 
-  /*
-   * Đưa hàm loadDocuments ra ngoài useEffect.
+  /**
+   * Lấy danh sách mẫu văn bản từ backend.
    *
-   * useCallback giúp giữ ổn định tham chiếu của hàm giữa
-   * các lần render và cho phép useEffect sử dụng hàm này
-   * mà không gây cảnh báo dependency.
+   * Backend:
+   * GET /api/DocumentTemplates
+   *
+   * API này lấy dữ liệu từ bảng DocumentTemplates
+   * trong SQL Server.
    */
+  const loadTemplates = useCallback(async () => {
+    try {
+      // Hiển thị trạng thái đang tải.
+      setTemplatesLoading(true);
+
+      // Gọi API backend.
+      const response = await api.get<DocumentTemplate[]>("/DocumentTemplates");
+
+      // Chỉ lấy các template đang hoạt động.
+      const activeTemplates = response.data.filter(
+        (template) => template.isActive,
+      );
+
+      // Lưu danh sách template.
+      setTemplates(activeTemplates);
+
+      // Nếu chưa có template nào đang được chọn
+      // và database có template,
+      // chọn template đầu tiên.
+      if (activeTemplates.length > 0) {
+        setAiTemplateName(
+          (currentTemplate) =>
+            currentTemplate || activeTemplates[0].templateName,
+        );
+      }
+    } catch (error) {
+      console.error("Không thể tải danh sách mẫu văn bản:", error);
+
+      // Không làm hỏng toàn bộ trang nếu API template lỗi.
+      setTemplates([]);
+    } finally {
+      setTemplatesLoading(false);
+    }
+  }, []);
+
   const loadDocuments = useCallback(async () => {
     try {
       setLoading(true);
@@ -222,7 +289,8 @@ function Documents() {
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     void loadDocuments();
-  }, [loadDocuments]);
+    void loadTemplates();
+  }, [loadDocuments, loadTemplates]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // =========================================================
@@ -516,20 +584,23 @@ function Documents() {
               id="ai-template-name"
               value={aiTemplateName}
               onChange={(event) => setAiTemplateName(event.target.value)}
-              disabled={isGeneratingAI}
+              disabled={isGeneratingAI || templatesLoading}
               className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
             >
-              <option value="Thông báo hành chính">Thông báo hành chính</option>
-
-              <option value="Công văn hành chính">Công văn hành chính</option>
-
-              <option value="Báo cáo hành chính">Báo cáo hành chính</option>
-
-              <option value="Biên bản hành chính">Biên bản hành chính</option>
-
-              <option value="Quyết định hành chính">
-                Quyết định hành chính
-              </option>
+              {templatesLoading ? (
+                <option value="">Đang tải mẫu văn bản...</option>
+              ) : templates.length === 0 ? (
+                <option value="">Chưa có mẫu văn bản</option>
+              ) : (
+                templates.map((template) => (
+                  <option
+                    key={template.documentTemplateId}
+                    value={template.templateName}
+                  >
+                    {template.templateName}
+                  </option>
+                ))
+              )}
             </select>
           </div>
         </div>
