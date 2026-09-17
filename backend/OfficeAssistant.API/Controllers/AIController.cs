@@ -85,18 +85,18 @@ public class AIController : ControllerBase
                 message = ex.Message
             });
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            /*
-             * Không trả chi tiết Exception ra frontend
-             * để tránh làm lộ thông tin hệ thống.
-             */
+            Console.WriteLine("===== AI ERROR =====");
+            Console.WriteLine(ex.ToString());
+            Console.WriteLine("====================");
+
             return StatusCode(
                 StatusCodes.Status500InternalServerError,
                 new
                 {
-                    message =
-                        "Đã xảy ra lỗi khi xử lý yêu cầu AI."
+                    message = "Đã xảy ra lỗi khi xử lý yêu cầu AI.",
+                    detail = ex.Message
                 }
             );
         }

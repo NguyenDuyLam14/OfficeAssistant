@@ -65,7 +65,9 @@ builder.Services.Configure<JwtSettings>(
 builder.Services.AddScoped<JwtService>();
 
 // Đăng ký AI Service để Controller có thể sử dụng.
-builder.Services.AddScoped<IAIService, OpenAIService>();
+builder.Services.AddHttpClient();
+
+builder.Services.AddScoped<IAIService, GeminiService>();
 // ============================================================
 // CẤU HÌNH AUTHENTICATION - JWT BEARER
 // ============================================================
