@@ -13,7 +13,7 @@ import axios from "axios";
 // Dữ liệu gửi từ React lên API AI.
 interface GenerateDocumentRequest {
   documentType: string;
-  templateName: string;
+  documentTemplateId: number;
   userPrompt: string;
 }
 
@@ -116,8 +116,9 @@ function Documents() {
   // Loại văn bản mà người dùng muốn AI soạn.
   const [aiDocumentType, setAiDocumentType] = useState("Thông báo");
 
-  // Tên mẫu văn bản mà người dùng muốn sử dụng.
-  const [aiTemplateName, setAiTemplateName] = useState("");
+  // ID mẫu văn bản mà người dùng muốn sử dụng.
+  // null = chưa chọn mẫu.
+  const [aiTemplateId, setAiTemplateId] = useState<number | null>(null);
 
   // Yêu cầu cụ thể gửi cho AI.
   const [aiPrompt, setAiPrompt] = useState("");
@@ -157,8 +158,7 @@ function Documents() {
       return;
     }
 
-    // Kiểm tra mẫu văn bản.
-    if (!aiTemplateName.trim()) {
+    if (aiTemplateId === null) {
       setAiError("Vui lòng chọn mẫu văn bản.");
 
       return;
@@ -182,7 +182,10 @@ function Documents() {
         "/AI/generate-document",
         {
           documentType: aiDocumentType,
-          templateName: aiTemplateName,
+
+          // Gửi ID template thay vì tên template.
+          documentTemplateId: aiTemplateId,
+
           userPrompt: aiPrompt,
         } satisfies GenerateDocumentRequest,
       );
@@ -239,16 +242,6 @@ function Documents() {
 
       // Lưu danh sách template.
       setTemplates(activeTemplates);
-
-      // Nếu chưa có template nào đang được chọn
-      // và database có template,
-      // chọn template đầu tiên.
-      if (activeTemplates.length > 0) {
-        setAiTemplateName(
-          (currentTemplate) =>
-            currentTemplate || activeTemplates[0].templateName,
-        );
-      }
     } catch (error) {
       console.error("Không thể tải danh sách mẫu văn bản:", error);
 
@@ -308,6 +301,38 @@ function Documents() {
       return matchesSearch && matchesType;
     });
   }, [documents, searchText, filterType]);
+
+  // =========================================================
+  // LỌC MẪU VĂN BẢN THEO LOẠI VĂN BẢN
+  // =========================================================
+
+  /**
+   * Chỉ hiển thị những mẫu đang hoạt động
+   * và phù hợp với loại văn bản đang được chọn.
+   *
+   * Ví dụ:
+   * - Chọn "Thông báo" → chỉ hiện template "Thông báo".
+   * - Chọn "Công văn" → chỉ hiện template "Công văn".
+   *
+   * Riêng "Khác":
+   * - Hiển thị các mẫu không thuộc những loại
+   *   được định nghĩa trong danh sách documentTypes.
+   */
+  const filteredTemplates = useMemo(() => {
+    return templates.filter((template) => {
+      // Nếu người dùng chọn "Khác",
+      // lấy các template không thuộc 5 loại chính.
+      if (aiDocumentType === "Khác") {
+        return !documentTypes
+          .filter((type) => type !== "Khác")
+          .includes(template.documentType);
+      }
+
+      // Với các loại thông thường,
+      // chỉ lấy template cùng loại.
+      return template.documentType === aiDocumentType;
+    });
+  }, [templates, aiDocumentType]);
 
   // =========================================================
   // MỞ MODAL TẠO VĂN BẢN
@@ -559,7 +584,39 @@ function Documents() {
             <select
               id="ai-document-type"
               value={aiDocumentType}
-              onChange={(event) => setAiDocumentType(event.target.value)}
+              onChange={(event) => {
+                const newDocumentType = event.target.value;
+
+                // Đổi loại văn bản.
+                setAiDocumentType(newDocumentType);
+
+                // Kiểm tra mẫu hiện tại có phù hợp với loại mới không.
+                if (aiTemplateId !== null) {
+                  const selectedTemplate = templates.find(
+                    (template) => template.documentTemplateId === aiTemplateId,
+                  );
+
+                  if (!selectedTemplate) {
+                    // Template không còn tồn tại.
+                    setAiTemplateId(null);
+                  } else if (newDocumentType === "Khác") {
+                    // Với "Khác", chỉ chấp nhận template
+                    // không thuộc các loại chính.
+                    const isOtherTemplate = !documentTypes
+                      .filter((type) => type !== "Khác")
+                      .includes(selectedTemplate.documentType);
+
+                    if (!isOtherTemplate) {
+                      setAiTemplateId(null);
+                    }
+                  } else if (
+                    selectedTemplate.documentType !== newDocumentType
+                  ) {
+                    // Template hiện tại không thuộc loại mới.
+                    setAiTemplateId(null);
+                  }
+                }
+              }}
               disabled={isGeneratingAI}
               className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
             >
@@ -574,33 +631,39 @@ function Documents() {
           {/* Mẫu văn bản */}
           <div>
             <label
-              htmlFor="ai-template-name"
+              htmlFor="ai-template-id"
               className="mb-2 block text-sm font-medium text-slate-700"
             >
               Mẫu văn bản
             </label>
 
             <select
-              id="ai-template-name"
-              value={aiTemplateName}
-              onChange={(event) => setAiTemplateName(event.target.value)}
+              id="ai-template-id"
+              value={aiTemplateId === null ? "" : aiTemplateId}
+              onChange={(event) => {
+                const value = event.target.value;
+
+                setAiTemplateId(value ? Number(value) : null);
+              }}
               disabled={isGeneratingAI || templatesLoading}
               className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
             >
-              {templatesLoading ? (
-                <option value="">Đang tải mẫu văn bản...</option>
-              ) : templates.length === 0 ? (
-                <option value="">Chưa có mẫu văn bản</option>
-              ) : (
-                templates.map((template) => (
-                  <option
-                    key={template.documentTemplateId}
-                    value={template.templateName}
-                  >
-                    {template.templateName}
-                  </option>
-                ))
-              )}
+              <option value="">
+                {templatesLoading
+                  ? "Đang tải mẫu văn bản..."
+                  : filteredTemplates.length === 0
+                    ? "Chưa có mẫu cho loại văn bản này"
+                    : "Chọn mẫu văn bản"}
+              </option>
+
+              {filteredTemplates.map((template) => (
+                <option
+                  key={template.documentTemplateId}
+                  value={template.documentTemplateId}
+                >
+                  {template.templateName}
+                </option>
+              ))}
             </select>
           </div>
         </div>
