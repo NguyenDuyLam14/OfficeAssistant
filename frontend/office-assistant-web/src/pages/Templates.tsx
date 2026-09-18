@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AxiosError } from "axios";
 import {
   FileText,
@@ -9,6 +9,8 @@ import {
   X,
   CheckCircle,
   XCircle,
+  Upload,
+  FileUp,
 } from "lucide-react";
 
 import api from "../services/api";
@@ -46,17 +48,24 @@ interface EditTemplateForm extends CreateTemplateForm {
 }
 
 function Templates() {
-  // Danh sách Template lấy từ API.
+  // =========================================================
+  // DANH SÁCH TEMPLATE
+  // =========================================================
+
   const [templates, setTemplates] = useState<DocumentTemplate[]>([]);
 
   // Trạng thái đang tải dữ liệu.
   const [loading, setLoading] = useState(true);
 
-  // Thông báo lỗi.
+  // Thông báo lỗi chung.
   const [error, setError] = useState("");
 
   // Nội dung tìm kiếm.
   const [searchText, setSearchText] = useState("");
+
+  // =========================================================
+  // MODAL THÊM / SỬA
+  // =========================================================
 
   // Điều khiển modal.
   const [showModal, setShowModal] = useState(false);
@@ -83,6 +92,40 @@ function Templates() {
 
   // Trạng thái đang lưu dữ liệu.
   const [saving, setSaving] = useState(false);
+
+  // =========================================================
+  // UPLOAD FILE WORD
+  // =========================================================
+
+  /*
+   * ID của template đang được upload file.
+   *
+   * Ví dụ:
+   * Người dùng bấm Upload ở template có ID = 3
+   * thì uploadingTemplateId = 3.
+   */
+  const [uploadingTemplateId, setUploadingTemplateId] = useState<number | null>(
+    null,
+  );
+
+  /*
+   * Input file HTML sẽ được tạo ẩn.
+   *
+   * Khi người dùng bấm "Upload Word",
+   * chúng ta sẽ gọi inputFileRef.current?.click().
+   */
+  const inputFileRef = useRef<HTMLInputElement | null>(null);
+
+  /*
+   * Template hiện đang được chọn để upload.
+   */
+  const [selectedTemplateForUpload, setSelectedTemplateForUpload] = useState<
+    number | null
+  >(null);
+
+  // =========================================================
+  // LOAD TEMPLATE
+  // =========================================================
 
   /*
    * Lấy danh sách Template từ Backend.
@@ -116,10 +159,12 @@ function Templates() {
   }, [loadTemplates]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
+  // =========================================================
+  // LỌC TEMPLATE
+  // =========================================================
+
   /*
-   * Lọc Template theo nội dung tìm kiếm.
-   *
-   * Có thể tìm theo:
+   * Lọc Template theo:
    * - Tên Template
    * - Loại văn bản
    * - Mô tả
@@ -139,6 +184,10 @@ function Templates() {
     );
   }, [templates, searchText]);
 
+  // =========================================================
+  // MODAL THÊM
+  // =========================================================
+
   /*
    * Mở modal thêm Template.
    */
@@ -155,6 +204,10 @@ function Templates() {
     setError("");
     setShowModal(true);
   };
+
+  // =========================================================
+  // MODAL SỬA
+  // =========================================================
 
   /*
    * Mở modal chỉnh sửa Template.
@@ -174,6 +227,10 @@ function Templates() {
     setShowModal(true);
   };
 
+  // =========================================================
+  // ĐÓNG MODAL
+  // =========================================================
+
   /*
    * Đóng modal.
    */
@@ -184,6 +241,10 @@ function Templates() {
     setEditingId(null);
     setError("");
   };
+
+  // =========================================================
+  // FORM THÊM
+  // =========================================================
 
   /*
    * Xử lý thay đổi Form thêm Template.
@@ -198,6 +259,10 @@ function Templates() {
     }));
   };
 
+  // =========================================================
+  // FORM SỬA
+  // =========================================================
+
   /*
    * Xử lý thay đổi Form sửa Template.
    */
@@ -210,6 +275,10 @@ function Templates() {
       [field]: value,
     }));
   };
+
+  // =========================================================
+  // TẠO TEMPLATE
+  // =========================================================
 
   /*
    * Gửi API tạo Template.
@@ -254,6 +323,10 @@ function Templates() {
       setSaving(false);
     }
   };
+
+  // =========================================================
+  // CẬP NHẬT TEMPLATE
+  // =========================================================
 
   /*
    * Gửi API cập nhật Template.
@@ -303,6 +376,10 @@ function Templates() {
     }
   };
 
+  // =========================================================
+  // XÓA TEMPLATE
+  // =========================================================
+
   /*
    * Xóa Template.
    */
@@ -333,11 +410,171 @@ function Templates() {
     }
   };
 
+  // =========================================================
+  // CHỌN TEMPLATE ĐỂ UPLOAD
+  // =========================================================
+
+  /*
+   * Người dùng bấm nút "Upload Word".
+   *
+   * Chúng ta:
+   * 1. Ghi nhớ ID template.
+   * 2. Mở hộp thoại chọn file.
+   */
+  const handleChooseFile = (templateId: number) => {
+    setError("");
+
+    setSelectedTemplateForUpload(templateId);
+
+    /*
+     * Reset value của input.
+     *
+     * Việc này cho phép người dùng chọn lại
+     * cùng một file sau khi upload thất bại hoặc
+     * muốn upload lại.
+     */
+    if (inputFileRef.current) {
+      inputFileRef.current.value = "";
+      inputFileRef.current.click();
+    }
+  };
+
+  // =========================================================
+  // UPLOAD FILE WORD
+  // =========================================================
+
+  /*
+   * Xử lý file sau khi người dùng chọn.
+   */
+  const handleFileSelected = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    /*
+     * Kiểm tra template.
+     */
+    if (selectedTemplateForUpload === null) {
+      setError("Không xác định được mẫu văn bản cần upload.");
+      return;
+    }
+
+    /*
+     * Chỉ cho phép .docx.
+     */
+    if (!file.name.toLowerCase().endsWith(".docx")) {
+      setError("Chỉ được upload file Word có định dạng .docx.");
+      return;
+    }
+
+    /*
+     * Giới hạn 10 MB.
+     *
+     * Backend cũng kiểm tra giới hạn này.
+     * Frontend kiểm tra trước để người dùng nhận
+     * thông báo nhanh hơn.
+     */
+    const maxFileSize = 10 * 1024 * 1024;
+
+    if (file.size > maxFileSize) {
+      setError("File Word không được vượt quá 10 MB.");
+      return;
+    }
+
+    try {
+      setUploadingTemplateId(selectedTemplateForUpload);
+      setError("");
+
+      /*
+       * FormData dùng để gửi file dạng multipart/form-data.
+       */
+      const formData = new FormData();
+
+      /*
+       * Tên "file" phải trùng với tham số IFormFile file
+       * trong Backend.
+       */
+      formData.append("file", file);
+
+      /*
+       * Gọi API:
+       *
+       * POST /api/DocumentTemplates/{id}/upload
+       */
+      await api.post(
+        `/DocumentTemplates/${selectedTemplateForUpload}/upload`,
+        formData,
+        {
+          /*
+           * Không cần tự set Content-Type.
+           *
+           * Axios sẽ tự thêm multipart/form-data
+           * và boundary cần thiết cho FormData.
+           */
+        },
+      );
+
+      /*
+       * Upload thành công.
+       * Tải lại danh sách để lấy FilePath mới từ Backend.
+       */
+      await loadTemplates();
+    } catch (err) {
+      console.error("Lỗi upload file Word:", err);
+
+      const axiosError = err as AxiosError<{
+        message?: string;
+      }>;
+
+      const message =
+        axiosError.response?.data?.message ?? "Không thể upload file Word.";
+
+      setError(message);
+    } finally {
+      setUploadingTemplateId(null);
+      setSelectedTemplateForUpload(null);
+
+      /*
+       * Xóa file đã chọn khỏi input.
+       */
+      if (inputFileRef.current) {
+        inputFileRef.current.value = "";
+      }
+    }
+  };
+
+  // =========================================================
+  // GIAO DIỆN
+  // =========================================================
+
   return (
     <main className="p-6">
       {/* =========================
+          INPUT FILE ẨN
+          ========================= */}
+
+      {/*
+       * Input này không hiển thị trực tiếp.
+       *
+       * Khi người dùng bấm "Upload Word",
+       * JavaScript sẽ gọi click() vào input này.
+       */}
+      <input
+        ref={inputFileRef}
+        type="file"
+        accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        className="hidden"
+        onChange={(event) => void handleFileSelected(event)}
+      />
+
+      {/* =========================
           TIÊU ĐỀ TRANG
           ========================= */}
+
       <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <div className="flex items-center gap-3">
@@ -368,6 +605,7 @@ function Templates() {
       {/* =========================
           THÔNG BÁO LỖI
           ========================= */}
+
       {error && !showModal && (
         <div className="mb-5 flex items-center justify-between rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           <span>{error}</span>
@@ -385,6 +623,7 @@ function Templates() {
       {/* =========================
           THANH TÌM KIẾM
           ========================= */}
+
       <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="relative">
           <Search
@@ -405,6 +644,7 @@ function Templates() {
       {/* =========================
           DANH SÁCH TEMPLATE
           ========================= */}
+
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-5 py-4">
           <h2 className="font-semibold text-slate-800">
@@ -436,7 +676,7 @@ function Templates() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px]">
+            <table className="w-full min-w-[1100px]">
               <thead className="bg-slate-50">
                 <tr>
                   <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600">
@@ -445,6 +685,10 @@ function Templates() {
 
                   <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600">
                     Loại văn bản
+                  </th>
+
+                  <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600">
+                    File Word
                   </th>
 
                   <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600">
@@ -466,72 +710,131 @@ function Templates() {
               </thead>
 
               <tbody className="divide-y divide-slate-100">
-                {filteredTemplates.map((template) => (
-                  <tr
-                    key={template.documentTemplateId}
-                    className="transition hover:bg-slate-50"
-                  >
-                    <td className="px-5 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="rounded-lg bg-blue-50 p-2 text-blue-600">
-                          <FileText size={18} />
+                {filteredTemplates.map((template) => {
+                  const isUploading =
+                    uploadingTemplateId === template.documentTemplateId;
+
+                  return (
+                    <tr
+                      key={template.documentTemplateId}
+                      className="transition hover:bg-slate-50"
+                    >
+                      {/* Tên mẫu */}
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="rounded-lg bg-blue-50 p-2 text-blue-600">
+                            <FileText size={18} />
+                          </div>
+
+                          <span className="font-medium text-slate-800">
+                            {template.templateName}
+                          </span>
                         </div>
+                      </td>
 
-                        <span className="font-medium text-slate-800">
-                          {template.templateName}
-                        </span>
-                      </div>
-                    </td>
+                      {/* Loại văn bản */}
+                      <td className="px-5 py-4 text-sm text-slate-600">
+                        {template.documentType}
+                      </td>
 
-                    <td className="px-5 py-4 text-sm text-slate-600">
-                      {template.documentType}
-                    </td>
+                      {/* =========================
+                          FILE WORD
+                          ========================= */}
+                      <td className="px-5 py-4">
+                        <div className="flex min-w-[210px] flex-col gap-2">
+                          {template.filePath ? (
+                            <div className="flex items-center gap-2 text-sm text-green-600">
+                              <CheckCircle size={16} />
 
-                    <td className="max-w-xs px-5 py-4 text-sm text-slate-500">
-                      {template.description || "Không có mô tả"}
-                    </td>
+                              <span className="font-medium">
+                                Đã có file Word
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 text-sm text-slate-400">
+                              <XCircle size={16} />
 
-                    <td className="px-5 py-4 text-center">
-                      {template.isActive ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700">
-                          <CheckCircle size={14} />
-                          Đang sử dụng
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-500">
-                          <XCircle size={14} />
-                          Tạm ngưng
-                        </span>
-                      )}
-                    </td>
+                              <span>Chưa có file Word</span>
+                            </div>
+                          )}
 
-                    <td className="px-5 py-4 text-sm text-slate-500">
-                      {new Date(template.createdAt).toLocaleDateString("vi-VN")}
-                    </td>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleChooseFile(template.documentTemplateId)
+                            }
+                            disabled={isUploading}
+                            className="inline-flex w-fit items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {isUploading ? (
+                              <>
+                                <Upload size={15} className="animate-pulse" />
+                                Đang upload...
+                              </>
+                            ) : (
+                              <>
+                                <FileUp size={15} />
+                                {template.filePath
+                                  ? "Thay file Word"
+                                  : "Upload Word"}
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </td>
 
-                    <td className="px-5 py-4">
-                      <div className="flex items-center justify-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => openEditModal(template)}
-                          className="rounded-lg p-2 text-blue-600 transition hover:bg-blue-50"
-                          title="Chỉnh sửa"
-                        >
-                          <Pencil size={18} />
-                        </button>
+                      {/* Mô tả */}
+                      <td className="max-w-xs px-5 py-4 text-sm text-slate-500">
+                        {template.description || "Không có mô tả"}
+                      </td>
 
-                        <button
-                          type="button"
-                          onClick={() => void handleDelete(template)}
-                          className="rounded-lg p-2 text-red-600 transition hover:bg-red-50"
-                          title="Xóa"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      {/* Trạng thái */}
+                      <td className="px-5 py-4 text-center">
+                        {template.isActive ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700">
+                            <CheckCircle size={14} />
+                            Đang sử dụng
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-500">
+                            <XCircle size={14} />
+                            Tạm ngưng
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Ngày tạo */}
+                      <td className="px-5 py-4 text-sm text-slate-500">
+                        {new Date(template.createdAt).toLocaleDateString(
+                          "vi-VN",
+                        )}
+                      </td>
+
+                      {/* Thao tác */}
+                      <td className="px-5 py-4">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(template)}
+                            className="rounded-lg p-2 text-blue-600 transition hover:bg-blue-50"
+                            title="Chỉnh sửa"
+                          >
+                            <Pencil size={18} />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => void handleDelete(template)}
+                            className="rounded-lg p-2 text-red-600 transition hover:bg-red-50"
+                            title="Xóa"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -541,6 +844,7 @@ function Templates() {
       {/* =========================
           MODAL THÊM / SỬA
           ========================= */}
+
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl">

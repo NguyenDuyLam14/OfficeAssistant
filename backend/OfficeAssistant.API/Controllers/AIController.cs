@@ -1,8 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using OfficeAssistant.API.Services.AI;
 using Microsoft.EntityFrameworkCore;
 using OfficeAssistant.API.Data;
+using OfficeAssistant.API.Services.AI;
 
 namespace OfficeAssistant.API.Controllers;
 
@@ -24,10 +24,7 @@ public class AIController : ControllerBase
         _aiService = aiService;
         _context = context;
     }
-    /// <summary>
-    /// Sinh nội dung văn bản bằng AI.
-    /// </summary>
-    [HttpPost("generate-document")]
+
     /// <summary>
     /// Sinh nội dung văn bản bằng AI.
     ///
@@ -49,7 +46,7 @@ public class AIController : ControllerBase
     /// </summary>
     [HttpPost("generate-document")]
     public async Task<IActionResult> GenerateDocument(
-    GenerateDocumentRequest request)
+        GenerateDocumentRequest request)
     {
         // =====================================================
         // 1. KIỂM TRA LOẠI VĂN BẢN
@@ -79,7 +76,7 @@ public class AIController : ControllerBase
         }
 
         // =====================================================
-        // 3. KIỂM TRA YÊU CẦU
+        // 3. KIỂM TRA YÊU CẦU SOẠN THẢO
         // =====================================================
 
         if (string.IsNullOrWhiteSpace(
@@ -115,12 +112,12 @@ public class AIController : ControllerBase
             });
         }
 
+        // =====================================================
+        // 5. GỌI AI
+        // =====================================================
+
         try
         {
-            // =================================================
-            // 5. GỌI AI
-            // =================================================
-
             var content =
                 await _aiService.GenerateDocumentAsync(
                     request.DocumentType,
@@ -129,7 +126,7 @@ public class AIController : ControllerBase
                 );
 
             // =================================================
-            // 6. TRẢ KẾT QUẢ
+            // 6. TRẢ KẾT QUẢ VỀ FRONTEND
             // =================================================
 
             return Ok(new
@@ -139,20 +136,22 @@ public class AIController : ControllerBase
 
                 content,
 
-                // Trả lại thông tin template để frontend
-                // biết nội dung này được tạo theo mẫu nào.
+                // ID của template được sử dụng.
                 documentTemplateId =
                     template.DocumentTemplateId,
 
+                // Tên template.
                 templateName =
                     template.TemplateName,
 
+                // Loại văn bản của template.
                 documentType =
                     template.DocumentType
             });
         }
         catch (Exception ex)
         {
+            // Ghi lỗi vào console để phục vụ debug.
             Console.WriteLine(
                 "===== AI ERROR ====="
             );
@@ -165,6 +164,7 @@ public class AIController : ControllerBase
                 "===================="
             );
 
+            // Không trả chi tiết exception về frontend.
             return StatusCode(
                 StatusCodes.Status500InternalServerError,
                 new
