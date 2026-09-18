@@ -500,22 +500,12 @@ function Templates() {
        */
       formData.append("file", file);
 
-      /*
-       * Gọi API:
-       *
-       * POST /api/DocumentTemplates/{id}/upload
-       */
+      // Gửi file dưới dạng multipart/form-data.
+      // Không tự đặt Content-Type vì Axios/trình duyệt
+      // cần tự thêm boundary cho FormData.
       await api.post(
         `/DocumentTemplates/${selectedTemplateForUpload}/upload`,
         formData,
-        {
-          /*
-           * Không cần tự set Content-Type.
-           *
-           * Axios sẽ tự thêm multipart/form-data
-           * và boundary cần thiết cho FormData.
-           */
-        },
       );
 
       /*

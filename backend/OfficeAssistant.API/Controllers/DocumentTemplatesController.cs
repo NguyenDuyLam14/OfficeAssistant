@@ -230,8 +230,8 @@ public class DocumentTemplatesController : ControllerBase
     [HttpPost("{id:int}/upload")]
     [RequestSizeLimit(10 * 1024 * 1024)]
     public async Task<IActionResult> UploadTemplateFile(
-        int id,
-        IFormFile file)
+    int id,
+    [FromForm] IFormFile file)
     {
         // -----------------------------------------------------
         // 1. Kiểm tra mẫu văn bản
