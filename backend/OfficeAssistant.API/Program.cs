@@ -7,6 +7,7 @@ using Microsoft.IdentityModel.Tokens;
 using OfficeAssistant.API.Data;
 using OfficeAssistant.API.Services;
 using OfficeAssistant.API.Services.AI;
+using OfficeAssistant.API.Services.Word;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -68,6 +69,10 @@ builder.Services.AddScoped<JwtService>();
 builder.Services.AddHttpClient();
 
 builder.Services.AddScoped<IAIService, GeminiService>();
+
+// Service xử lý file Word bằng OpenXML.
+builder.Services.AddScoped<WordTemplateService>();
+
 // ============================================================
 // CẤU HÌNH AUTHENTICATION - JWT BEARER
 // ============================================================
