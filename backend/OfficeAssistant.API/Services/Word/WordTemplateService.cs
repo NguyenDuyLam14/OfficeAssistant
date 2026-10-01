@@ -4,34 +4,26 @@ using DocumentFormat.OpenXml.Wordprocessing;
 namespace OfficeAssistant.API.Services.Word;
 
 /// <summary>
-/// Service xử lý file Word mẫu (.docx).
+/// Service xử lý việc thay thế nội dung trong file Word template.
 ///
-/// Chức năng:
-/// - Mở file Word mẫu.
-/// - Tìm placeholder dạng {{TEN_PLACEHOLDER}}.
-/// - Thay placeholder bằng nội dung thực tế.
-/// - Lưu thành file Word mới.
-///
-/// Ví dụ:
-/// {{TIEU_DE}}
-/// {{NOI_DUNG}}
-/// {{NGAY}}
-/// {{THANG}}
-/// {{NAM}}
+/// Mục tiêu:
+/// - Giữ nguyên định dạng Word của template.
+/// - Thay thế các placeholder như {{TIEU_DE}}.
+/// - Không gom toàn bộ paragraph vào một Run duy nhất.
 /// </summary>
 public class WordTemplateService
 {
     /// <summary>
-    /// Tạo file Word mới từ file Word mẫu.
+    /// Tạo file Word mới từ file template.
     /// </summary>
     /// <param name="templateFilePath">
-    /// Đường dẫn vật lý tới file Word mẫu.
+    /// Đường dẫn file Word mẫu.
     /// </param>
     /// <param name="outputFilePath">
-    /// Đường dẫn vật lý tới file Word kết quả.
+    /// Đường dẫn file Word kết quả.
     /// </param>
     /// <param name="replacements">
-    /// Danh sách placeholder và nội dung thay thế.
+    /// Danh sách placeholder và nội dung cần thay thế.
     /// </param>
     public void GenerateDocument(
         string templateFilePath,
@@ -39,7 +31,7 @@ public class WordTemplateService
         Dictionary<string, string> replacements)
     {
         // =====================================================
-        // 1. KIỂM TRA FILE MẪU
+        // 1. KIỂM TRA FILE TEMPLATE
         // =====================================================
 
         if (!File.Exists(templateFilePath))
@@ -63,7 +55,7 @@ public class WordTemplateService
         }
 
         // =====================================================
-        // 3. XÓA FILE OUTPUT CŨ NẾU CÓ
+        // 3. XÓA FILE CŨ NẾU ĐÃ TỒN TẠI
         // =====================================================
 
         if (File.Exists(outputFilePath))
@@ -72,19 +64,7 @@ public class WordTemplateService
         }
 
         // =====================================================
-        // 4. COPY FILE MẪU
-        // =====================================================
-        //
-        // Không sửa trực tiếp file mẫu.
-        //
-        // Ví dụ:
-        //
-        // Template:
-        // Storage/Templates/mau.docx
-        //
-        // Output:
-        // Storage/Generated/result.docx
-        //
+        // 4. COPY TEMPLATE THÀNH FILE OUTPUT
         // =====================================================
 
         File.Copy(
@@ -93,7 +73,7 @@ public class WordTemplateService
         );
 
         // =====================================================
-        // 5. MỞ FILE WORD KẾT QUẢ BẰNG OPENXML
+        // 5. MỞ FILE WORD BẰNG OPENXML
         // =====================================================
 
         using var document =
@@ -120,11 +100,9 @@ public class WordTemplateService
         // 7. LẤY DOCUMENT
         // =====================================================
 
-        // Lấy tài liệu Word chính từ MainDocumentPart.
         var documentElement =
             mainPart.Document;
 
-        // Kiểm tra Document có tồn tại hay không.
         if (documentElement == null)
         {
             throw new InvalidOperationException(
@@ -136,12 +114,9 @@ public class WordTemplateService
         // 8. LẤY BODY
         // =====================================================
 
-        // Sau khi đã kiểm tra Document,
-        // chúng ta mới lấy Body của tài liệu.
         var body =
             documentElement.Body;
 
-        // Kiểm tra Body có tồn tại hay không.
         if (body == null)
         {
             throw new InvalidOperationException(
@@ -154,154 +129,414 @@ public class WordTemplateService
         // =====================================================
 
         var paragraphs =
-            body.Descendants<Paragraph>()
+            body
+                .Descendants<Paragraph>()
                 .ToList();
 
         // =====================================================
-        // 10. DUYỆT TỪNG PARAGRAPH
+        // 10. XỬ LÝ TỪNG PARAGRAPH
         // =====================================================
 
         foreach (var paragraph in paragraphs)
         {
-            // -------------------------------------------------
-            // Lấy danh sách Run.
-            // -------------------------------------------------
-
-            var runs =
-                paragraph.Descendants<Run>()
-                    .ToList();
-
-            if (runs.Count == 0)
-            {
-                continue;
-            }
-
-            // -------------------------------------------------
-            // Ghép toàn bộ Text trong paragraph.
-            //
-            // Word có thể chia:
-            //
-            // {{TIEU_DE}}
-            //
-            // thành nhiều Run.
-            //
-            // Vì vậy phải ghép chúng lại.
-            // -------------------------------------------------
-
-            var textParts =
-                new List<string>();
-
-            foreach (var run in runs)
-            {
-                var texts =
-                    run.Elements<Text>();
-
-                foreach (var text in texts)
-                {
-                    if (text != null)
-                    {
-                        textParts.Add(text.Text);
-                    }
-                }
-            }
-
-            var fullText =
-                string.Concat(textParts);
-
-            if (string.IsNullOrEmpty(fullText))
-            {
-                continue;
-            }
-
-            // =================================================
-            // 11. THAY PLACEHOLDER
-            // =================================================
-
-            foreach (var replacement in replacements)
-            {
-                var placeholder =
-                    replacement.Key;
-
-                var replacementText =
-                    replacement.Value ?? string.Empty;
-
-                if (fullText.Contains(
-                        placeholder,
-                        StringComparison.Ordinal))
-                {
-                    fullText =
-                        fullText.Replace(
-                            placeholder,
-                            replacementText,
-                            StringComparison.Ordinal
-                        );
-                }
-            }
-
-            // =================================================
-            // 12. XÓA TEXT CŨ
-            // =================================================
-
-            foreach (var run in runs)
-            {
-                var textElements =
-                    run.Elements<Text>()
-                        .ToList();
-
-                foreach (var textElement in textElements)
-                {
-                    textElement.Text =
-                        string.Empty;
-                }
-            }
-
-            // =================================================
-            // 13. LẤY RUN ĐẦU TIÊN
-            // =================================================
-
-            var firstRun =
-                runs.FirstOrDefault();
-
-            if (firstRun == null)
-            {
-                continue;
-            }
-
-            // =================================================
-            // 14. TÌM TEXT ĐẦU TIÊN
-            // =================================================
-
-            var firstText =
-                firstRun
-                    .Elements<Text>()
-                    .FirstOrDefault();
-
-            // =================================================
-            // 15. CẬP NHẬT TEXT
-            // =================================================
-
-            if (firstText != null)
-            {
-                // Đã có phần tử Text → cập nhật nội dung.
-                firstText.Text = fullText;
-            }
-            else
-            {
-                // Chưa có Text → tạo một phần tử Text mới.
-                var newText = new Text
-                {
-                    Text = fullText
-                };
-
-                firstRun.AppendChild(newText);
-            }
+            ReplaceParagraphText(
+                paragraph,
+                replacements
+            );
         }
 
         // =====================================================
-        // 16. LƯU FILE
+        // 11. LƯU FILE WORD
         // =====================================================
 
-        // Lưu lại nội dung Word sau khi thay thế placeholder.
         documentElement.Save();
+    }
+
+    /// <summary>
+    /// Thay placeholder trong một paragraph
+    /// nhưng cố gắng giữ nguyên định dạng của từng Run.
+    /// </summary>
+    private void ReplaceParagraphText(
+        Paragraph paragraph,
+        Dictionary<string, string> replacements)
+    {
+        // =====================================================
+        // 1. LẤY CÁC RUN TRỰC TIẾP TRONG PARAGRAPH
+        // =====================================================
+
+        var runs =
+            paragraph
+                .Elements<Run>()
+                .ToList();
+
+        if (runs.Count == 0)
+        {
+            return;
+        }
+
+        // =====================================================
+        // 2. TẠO DANH SÁCH THÔNG TIN CỦA CÁC RUN
+        // =====================================================
+
+        var runInfos =
+            new List<RunInfo>();
+
+        var fullText = string.Empty;
+
+        foreach (var run in runs)
+        {
+            // Lấy toàn bộ Text trong Run.
+            var text =
+                string.Concat(
+                    run
+                        .Elements<Text>()
+                        .Select(x => x.Text ?? string.Empty)
+                );
+
+            // Lưu lại nội dung và định dạng của Run.
+            runInfos.Add(
+                new RunInfo
+                {
+                    Run = run,
+                    Text = text,
+                    StartIndex = fullText.Length,
+                    EndIndex =
+                        fullText.Length + text.Length
+                }
+            );
+
+            // Ghép vào chuỗi tổng.
+            fullText += text;
+        }
+
+        // Không có nội dung text.
+        if (string.IsNullOrEmpty(fullText))
+        {
+            return;
+        }
+
+        // =====================================================
+        // 3. KIỂM TRA CÓ PLACEHOLDER HAY KHÔNG
+        // =====================================================
+
+        var hasReplacement =
+            replacements.Keys.Any(
+                placeholder =>
+                    fullText.Contains(
+                        placeholder,
+                        StringComparison.Ordinal
+                    )
+            );
+
+        if (!hasReplacement)
+        {
+            return;
+        }
+
+        // =====================================================
+        // 4. TẠO CÁC ĐOẠN TEXT MỚI
+        // =====================================================
+
+        var segments =
+            BuildTextSegments(
+                fullText,
+                runInfos,
+                replacements
+            );
+
+        // =====================================================
+        // 5. XÓA CÁC RUN CŨ
+        // =====================================================
+
+        foreach (var run in runs)
+        {
+            run.Remove();
+        }
+
+        // =====================================================
+        // 6. TẠO LẠI RUN
+        // =====================================================
+
+        foreach (var segment in segments)
+        {
+            var newRun =
+                new Run();
+
+            // -------------------------------------------------
+            // Sao chép định dạng của Run gốc.
+            // -------------------------------------------------
+
+            if (segment.RunProperties != null)
+            {
+                newRun.RunProperties =
+                    (RunProperties)
+                    segment.RunProperties.CloneNode(true);
+            }
+
+            // -------------------------------------------------
+            // Thêm Text mới.
+            // -------------------------------------------------
+
+            var text =
+                new Text(segment.Text);
+
+            // Giữ khoảng trắng đầu/cuối nếu có.
+            text.Space =
+                DocumentFormat.OpenXml.SpaceProcessingModeValues.Preserve;
+
+            newRun.AppendChild(text);
+
+            // -------------------------------------------------
+            // Thêm Run mới vào Paragraph.
+            // -------------------------------------------------
+
+            paragraph.AppendChild(newRun);
+        }
+    }
+
+    /// <summary>
+    /// Xây dựng các đoạn text mới sau khi thay placeholder.
+    /// </summary>
+    private List<TextSegment> BuildTextSegments(
+        string fullText,
+        List<RunInfo> runInfos,
+        Dictionary<string, string> replacements)
+    {
+        var segments =
+            new List<TextSegment>();
+
+        var currentIndex = 0;
+
+        while (currentIndex < fullText.Length)
+        {
+            // =================================================
+            // TÌM PLACEHOLDER TIẾP THEO
+            // =================================================
+
+            string? foundPlaceholder = null;
+
+            var foundIndex = -1;
+
+            foreach (var replacement in replacements)
+            {
+                var index =
+                    fullText.IndexOf(
+                        replacement.Key,
+                        currentIndex,
+                        StringComparison.Ordinal
+                    );
+
+                if (index >= 0 &&
+                    (foundIndex < 0 ||
+                     index < foundIndex))
+                {
+                    foundIndex = index;
+                    foundPlaceholder =
+                        replacement.Key;
+                }
+            }
+
+            // =================================================
+            // KHÔNG CÒN PLACEHOLDER
+            // =================================================
+
+            if (foundPlaceholder == null)
+            {
+                AddTextSegment(
+                    segments,
+                    fullText.Substring(currentIndex),
+                    currentIndex,
+                    runInfos
+                );
+
+                break;
+            }
+
+            // =================================================
+            // THÊM TEXT TRƯỚC PLACEHOLDER
+            // =================================================
+
+            if (foundIndex > currentIndex)
+            {
+                AddTextSegment(
+                    segments,
+                    fullText.Substring(
+                        currentIndex,
+                        foundIndex - currentIndex
+                    ),
+                    currentIndex,
+                    runInfos
+                );
+            }
+
+            // =================================================
+            // LẤY NỘI DUNG THAY THẾ
+            // =================================================
+
+            var replacementText =
+                replacements[foundPlaceholder] ??
+                string.Empty;
+
+            // -------------------------------------------------
+            // Placeholder sẽ sử dụng định dạng của Run
+            // chứa ký tự đầu tiên của placeholder.
+            // -------------------------------------------------
+
+            var placeholderRun =
+                FindRunInfo(
+                    foundIndex,
+                    runInfos
+                );
+
+            if (placeholderRun != null)
+            {
+                segments.Add(
+                    new TextSegment
+                    {
+                        Text = replacementText,
+                        RunProperties =
+                            placeholderRun.Run
+                                .RunProperties
+                    }
+                );
+            }
+            else
+            {
+                segments.Add(
+                    new TextSegment
+                    {
+                        Text = replacementText,
+                        RunProperties = null
+                    }
+                );
+            }
+
+            // =================================================
+            // DI CHUYỂN QUA PLACEHOLDER
+            // =================================================
+
+            currentIndex =
+                foundIndex +
+                foundPlaceholder.Length;
+        }
+
+        return segments;
+    }
+
+    /// <summary>
+    /// Thêm một đoạn text vào danh sách segment
+    /// với định dạng tương ứng với Run gốc.
+    /// </summary>
+    private void AddTextSegment(
+        List<TextSegment> segments,
+        string text,
+        int startIndex,
+        List<RunInfo> runInfos)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return;
+        }
+
+        var currentIndex = startIndex;
+
+        while (currentIndex < startIndex + text.Length)
+        {
+            // Tìm Run chứa vị trí hiện tại.
+            var runInfo =
+                FindRunInfo(
+                    currentIndex,
+                    runInfos
+                );
+
+            if (runInfo == null)
+            {
+                break;
+            }
+
+            // Xác định vị trí bắt đầu trong Run.
+            var offsetInRun =
+                currentIndex -
+                runInfo.StartIndex;
+
+            // Số ký tự còn lại của Run.
+            var remainingInRun =
+                runInfo.Text.Length -
+                offsetInRun;
+
+            // Số ký tự còn lại của segment.
+            var remainingInSegment =
+                startIndex +
+                text.Length -
+                currentIndex;
+
+            var takeLength =
+                Math.Min(
+                    remainingInRun,
+                    remainingInSegment
+                );
+
+            if (takeLength <= 0)
+            {
+                break;
+            }
+
+            // Lấy phần text tương ứng.
+            var segmentText =
+                text.Substring(
+                    currentIndex - startIndex,
+                    takeLength
+                );
+
+            // Thêm segment cùng định dạng Run gốc.
+            segments.Add(
+                new TextSegment
+                {
+                    Text = segmentText,
+                    RunProperties =
+                        runInfo.Run.RunProperties
+                }
+            );
+
+            currentIndex += takeLength;
+        }
+    }
+
+    /// <summary>
+    /// Tìm Run chứa vị trí ký tự.
+    /// </summary>
+    private RunInfo? FindRunInfo(
+        int characterIndex,
+        List<RunInfo> runInfos)
+    {
+        return runInfos.FirstOrDefault(
+            x =>
+                characterIndex >= x.StartIndex &&
+                characterIndex < x.EndIndex
+        );
+    }
+
+    /// <summary>
+    /// Thông tin của một Run trong Word.
+    /// </summary>
+    private class RunInfo
+    {
+        public Run Run { get; set; } = null!;
+
+        public string Text { get; set; } = string.Empty;
+
+        public int StartIndex { get; set; }
+
+        public int EndIndex { get; set; }
+    }
+
+    /// <summary>
+    /// Một đoạn text mới cùng với định dạng của nó.
+    /// </summary>
+    private class TextSegment
+    {
+        public string Text { get; set; } = string.Empty;
+
+        public RunProperties? RunProperties { get; set; }
     }
 }
