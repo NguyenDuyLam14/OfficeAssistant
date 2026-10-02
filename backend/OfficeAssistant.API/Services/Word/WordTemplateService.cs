@@ -14,6 +14,117 @@ namespace OfficeAssistant.API.Services.Word;
 public class WordTemplateService
 {
     /// <summary>
+    /// Đọc file Word template và tìm tất cả placeholder
+    /// có dạng {{TEN_PLACEHOLDER}}.
+    ///
+    /// Ví dụ:
+    /// {{TIEU_DE}}
+    /// {{DON_VI}}
+    /// {{NOI_DUNG}}
+    /// {{NGUOI_KY}}
+    /// </summary>
+    public List<string> GetPlaceholders(
+        string templateFilePath)
+    {
+        // Kiểm tra file template có tồn tại không.
+        if (!File.Exists(templateFilePath))
+        {
+            throw new FileNotFoundException(
+                "Không tìm thấy file Word mẫu.",
+                templateFilePath
+            );
+        }
+
+        // Danh sách placeholder tìm được.
+        var placeholders =
+            new HashSet<string>(
+                StringComparer.Ordinal
+            );
+
+        // Mở file Word ở chế độ chỉ đọc.
+        using var document =
+            WordprocessingDocument.Open(
+                templateFilePath,
+                false
+            );
+
+        // Lấy MainDocumentPart.
+        var mainPart =
+            document.MainDocumentPart;
+
+        if (mainPart == null)
+        {
+            throw new InvalidOperationException(
+                "File Word không có MainDocumentPart hợp lệ."
+            );
+        }
+
+        // Lấy Document.
+        var documentElement =
+            mainPart.Document;
+
+        if (documentElement == null)
+        {
+            throw new InvalidOperationException(
+                "File Word không có Document hợp lệ."
+            );
+        }
+
+        // Lấy Body.
+        var body =
+            documentElement.Body;
+
+        if (body == null)
+        {
+            throw new InvalidOperationException(
+                "File Word không có Body."
+            );
+        }
+
+        // Descendants<Paragraph>() bao gồm paragraph
+        // trong bảng Word.
+        var paragraphs =
+            body
+                .Descendants<Paragraph>()
+                .ToList();
+
+        // Duyệt từng paragraph.
+        foreach (var paragraph in paragraphs)
+        {
+            // Ghép toàn bộ Text trong paragraph.
+            var paragraphText =
+                string.Concat(
+                    paragraph
+                        .Descendants<Text>()
+                        .Select(
+                            text =>
+                                text.Text ?? string.Empty
+                        )
+                );
+
+            if (string.IsNullOrWhiteSpace(paragraphText))
+            {
+                continue;
+            }
+
+            // Tìm placeholder dạng {{...}}.
+            var matches =
+                System.Text.RegularExpressions.Regex.Matches(
+                    paragraphText,
+                    @"\{\{[^{}]+\}\}"
+                );
+
+            foreach (System.Text.RegularExpressions.Match match
+                     in matches)
+            {
+                placeholders.Add(match.Value);
+            }
+        }
+
+        return placeholders.ToList();
+    }
+
+    /// <summary>
     /// Tạo file Word mới từ file template.
     /// </summary>
     /// <param name="templateFilePath">
