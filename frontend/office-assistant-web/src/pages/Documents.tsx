@@ -132,6 +132,16 @@ function Documents() {
   // Lỗi riêng của chức năng AI.
   const [aiError, setAiError] = useState("");
 
+  // =========================================================
+  // STATE CHO CHỨC NĂNG AI SOẠN VÀ XUẤT WORD
+  // =========================================================
+
+  // Trạng thái đang gọi API tạo file Word.
+  const [isGeneratingWord, setIsGeneratingWord] = useState(false);
+
+  // Lỗi riêng của chức năng xuất Word.
+  const [wordError, setWordError] = useState("");
+
   /**
    * Gọi API backend để Gemini sinh nội dung văn bản.
    *
@@ -211,6 +221,136 @@ function Documents() {
     } finally {
       // Tắt loading dù thành công hay thất bại.
       setIsGeneratingAI(false);
+    }
+  };
+
+  // =========================================================
+  // AI SOẠN NỘI DUNG + XUẤT FILE WORD
+  // =========================================================
+
+  /**
+   * Gọi backend để:
+   *
+   * React
+   *   ↓
+   * ASP.NET Core
+   *   ↓
+   * Gemini
+   *   ↓
+   * Lấy placeholder từ template
+   *   ↓
+   * OpenXML thay nội dung
+   *   ↓
+   * Trả file .docx
+   *
+   * Frontend nhận file dạng Blob
+   * và tự động tải xuống máy.
+   */
+  const handleGenerateAIWord = async () => {
+    // Kiểm tra người dùng đã chọn template chưa.
+    if (aiTemplateId === null) {
+      setWordError("Vui lòng chọn mẫu văn bản trước khi xuất Word.");
+
+      return;
+    }
+
+    // Kiểm tra yêu cầu soạn thảo.
+    if (!aiPrompt.trim()) {
+      setWordError("Vui lòng nhập yêu cầu soạn thảo.");
+
+      return;
+    }
+
+    try {
+      // Bật trạng thái loading.
+      setIsGeneratingWord(true);
+
+      // Xóa lỗi cũ.
+      setWordError("");
+
+      // Gọi API backend.
+      //
+      // API trả về file .docx nên phải sử dụng:
+      // responseType: "blob"
+      const response = await api.post(
+        "/Word/generate-from-ai",
+        {
+          documentTemplateId: aiTemplateId,
+
+          documentType: aiDocumentType,
+
+          userPrompt: aiPrompt.trim(),
+        },
+        {
+          responseType: "blob",
+        },
+      );
+
+      // =====================================================
+      // TẠO BLOB TỪ FILE WORD
+      // =====================================================
+
+      const blob = new Blob([response.data], {
+        type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      });
+
+      // Tạo URL tạm cho file.
+      const url = window.URL.createObjectURL(blob);
+
+      // Tạo thẻ <a> tạm để kích hoạt download.
+      const link = document.createElement("a");
+
+      link.href = url;
+
+      // Đặt tên file mặc định.
+      link.download = `AI_${aiDocumentType}_${new Date()
+        .toISOString()
+        .slice(0, 10)}.docx`;
+
+      // Thêm vào DOM.
+      document.body.appendChild(link);
+
+      // Kích hoạt tải file.
+      link.click();
+
+      // Xóa thẻ <a>.
+      link.remove();
+
+      // Giải phóng URL tạm.
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Lỗi AI soạn và xuất Word:", error);
+
+      let message = "Không thể tạo file Word bằng AI.";
+
+      // =====================================================
+      // XỬ LÝ LỖI AXIOS
+      // =====================================================
+
+      if (axios.isAxiosError(error)) {
+        const responseData = error.response?.data;
+
+        // Vì API đang trả lỗi dưới dạng Blob
+        // nên cần đọc Blob thành text.
+        if (responseData instanceof Blob) {
+          try {
+            const errorText = await responseData.text();
+
+            const errorJson = JSON.parse(errorText);
+
+            if (errorJson.message) {
+              message = errorJson.message;
+            }
+          } catch {
+            // Giữ message mặc định.
+          }
+        }
+      }
+
+      setWordError(message);
+    } finally {
+      // Tắt trạng thái loading.
+      setIsGeneratingWord(false);
     }
   };
 
@@ -695,18 +835,54 @@ function Documents() {
           </div>
         )}
 
-        {/* Nút tạo AI */}
-        <div className="mt-4 flex justify-end">
+        {/* =====================================================
+    NÚT AI
+    ===================================================== */}
+
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:justify-end">
+          {/* ================================================
+      AI TẠO NỘI DUNG
+      ================================================ */}
+
           <button
             type="button"
             onClick={handleGenerateAI}
-            disabled={isGeneratingAI}
+            disabled={isGeneratingAI || isGeneratingWord}
             className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {isGeneratingAI ? "Đang tạo văn bản..." : "✨ Tạo văn bản bằng AI"}
+            {isGeneratingAI ? "Đang tạo văn bản..." : "✨ Tạo nội dung bằng AI"}
+          </button>
+
+          {/* ================================================
+      AI SOẠN + XUẤT WORD
+      ================================================ */}
+
+          <button
+            type="button"
+            onClick={handleGenerateAIWord}
+            disabled={
+              isGeneratingAI ||
+              isGeneratingWord ||
+              aiTemplateId === null ||
+              !aiPrompt.trim()
+            }
+            className="rounded-xl bg-green-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isGeneratingWord
+              ? "Đang tạo file Word..."
+              : "📄 AI soạn & xuất Word"}
           </button>
         </div>
       </section>
+      {/* =====================================================
+    LỖI AI SOẠN & XUẤT WORD
+    ===================================================== */}
+
+      {wordError && (
+        <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {wordError}
+        </div>
+      )}
 
       {/* =====================================================
           KẾT QUẢ AI
