@@ -27,4 +27,12 @@ public interface IAIService
         string userPrompt,
         List<string> placeholders
     );
+
+    Task<Dictionary<string, string>> GenerateNaturalTemplateFieldsAsync(
+    string documentType,
+    string templateName,
+    string userPrompt,
+    string analyzedTemplateText,
+    List<string> fieldIds
+);
 }

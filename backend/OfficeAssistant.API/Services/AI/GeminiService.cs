@@ -416,6 +416,319 @@ public class GeminiService : IAIService
     }
 
     // =========================================================
+    // 2B. SINH DỮ LIỆU CHO TEMPLATE WORD TỰ NHIÊN
+    // =========================================================
+
+    /// <summary>
+    /// Phân tích template Word tự nhiên.
+    ///
+    /// Template không cần sử dụng {{...}} hoặc [...],
+    /// mà có thể sử dụng các dấu "…" như mẫu văn bản thực tế.
+    ///
+    /// Ví dụ:
+    /// V/v Nghỉ lễ …
+    /// Công ty…
+    /// Hotline:……………………
+    ///
+    /// Backend sẽ chuyển các vùng này thành:
+    /// [F001], [F002], [F003]...
+    ///
+    /// Gemini dựa vào ngữ cảnh để xác định nội dung cần điền.
+    /// </summary>
+    public async Task<Dictionary<string, string>>
+        GenerateNaturalTemplateFieldsAsync(
+            string documentType,
+            string templateName,
+            string userPrompt,
+            string analyzedTemplateText,
+            List<string> fieldIds)
+    {
+        if (fieldIds == null ||
+            fieldIds.Count == 0)
+        {
+            throw new InvalidOperationException(
+                "Template không chứa vùng cần AI điền."
+            );
+        }
+
+        if (string.IsNullOrWhiteSpace(analyzedTemplateText))
+        {
+            throw new InvalidOperationException(
+                "Không đọc được nội dung template."
+            );
+        }
+
+        var apiKey =
+            GetApiKey();
+
+        var modelName =
+            GetModelName();
+
+        // ---------------------------------------------------------
+        // Tạo JSON Schema.
+        // ---------------------------------------------------------
+
+        var properties =
+            new Dictionary<string, object>();
+
+        foreach (var fieldId in fieldIds)
+        {
+            properties[fieldId] =
+                new
+                {
+                    type = "string",
+                    description =
+                        $"Nội dung cần điền vào vùng {fieldId}, " +
+                        "hãy xác định dựa trên ngữ cảnh của văn bản."
+                };
+        }
+
+        var schema = new
+        {
+            type = "OBJECT",
+            properties = properties,
+            required = fieldIds
+        };
+
+        // ---------------------------------------------------------
+        // Danh sách field.
+        // ---------------------------------------------------------
+
+        var fieldText =
+            string.Join(
+                "\n",
+                fieldIds.Select(
+                    fieldId =>
+                        $"- {fieldId}"
+                )
+            );
+
+        // ---------------------------------------------------------
+        // Prompt cho Gemini.
+        // ---------------------------------------------------------
+
+        var prompt = $"""
+        Bạn là trợ lý AI hỗ trợ nghiệp vụ văn phòng
+        và soạn thảo văn bản hành chính bằng tiếng Việt.
+
+        Bạn đang xử lý một file Word mẫu thực tế.
+
+        Loại văn bản:
+        {documentType}
+
+        Tên mẫu:
+        {templateName}
+
+        Yêu cầu của người dùng:
+        {userPrompt}
+
+        ========================================================
+        NỘI DUNG TEMPLATE SAU KHI ĐÁNH DẤU CÁC VÙNG CẦN ĐIỀN
+        ========================================================
+
+        {analyzedTemplateText}
+
+        ========================================================
+        CÁC FIELD CẦN ĐIỀN
+        ========================================================
+
+        {fieldText}
+
+        ========================================================
+        NHIỆM VỤ
+        ========================================================
+
+        Hãy phân tích toàn bộ nội dung template và yêu cầu
+        của người dùng.
+
+        Các mã [F001], [F002], [F003]... chỉ là mã nội bộ
+        đại diện cho những vị trí cần điền trong file Word.
+
+        Hãy xác định ý nghĩa của từng field dựa trên:
+        - Nội dung đứng trước field.
+        - Nội dung đứng sau field.
+        - Câu chứa field.
+        - Ngữ cảnh của toàn bộ văn bản.
+        - Yêu cầu của người dùng.
+
+        Ví dụ:
+
+        "V/v Nghỉ lễ [F001]"
+        → F001 có thể là tên ngày lễ.
+
+        "Công ty[F002] xin trân trọng thông báo"
+        → F002 có thể là tên công ty.
+
+        "Hotline:[F003]"
+        → F003 là số điện thoại liên hệ.
+
+        "Email:[F004]"
+        → F004 là địa chỉ email.
+
+        Nếu một field nằm trong:
+        "ngày[F005]/[F006]/[F007]"
+        thì phải hiểu ngữ cảnh để xác định:
+        - ngày
+        - tháng
+        - năm
+
+        ========================================================
+        QUY TẮC
+        ========================================================
+
+        1. Phải trả về đầy đủ tất cả field được yêu cầu.
+
+        2. Không được thay đổi tên field.
+
+        3. Không được tạo thêm field mới.
+
+        4. Không được bỏ field.
+
+        5. Không trả về Markdown.
+
+        6. Chỉ trả về JSON theo schema.
+
+        7. Sử dụng tiếng Việt.
+
+        8. Văn phong phù hợp với văn bản hành chính.
+
+        9. Không tự ý bịa đặt thông tin quan trọng.
+
+        10. Nếu người dùng đã cung cấp thông tin cụ thể,
+            phải ưu tiên thông tin của người dùng.
+
+        11. Nếu một thông tin không thể xác định từ yêu cầu
+            hoặc ngữ cảnh, để giá trị rỗng thay vì tự bịa.
+
+        12. Nội dung điền phải phù hợp với vị trí của field.
+
+        Kết quả phải tuân thủ chính xác JSON Schema.
+        """;
+
+        // ---------------------------------------------------------
+        // Request body.
+        // ---------------------------------------------------------
+
+        var requestBody = new
+        {
+            contents = new[]
+            {
+            new
+            {
+                parts = new[]
+                {
+                    new
+                    {
+                        text = prompt
+                    }
+                }
+            }
+        },
+
+            generationConfig = new
+            {
+                temperature = 0.2,
+
+                responseMimeType =
+                    "application/json",
+
+                responseSchema = schema
+            }
+        };
+
+        // ---------------------------------------------------------
+        // Gọi Gemini.
+        // ---------------------------------------------------------
+
+        var responseContent =
+            await SendGeminiRequestAsync(
+                modelName,
+                apiKey,
+                requestBody
+            );
+
+        var generatedText =
+            ExtractGeneratedText(
+                responseContent
+            );
+
+        // ---------------------------------------------------------
+        // Parse JSON.
+        // ---------------------------------------------------------
+
+        Dictionary<string, string>? result;
+
+        try
+        {
+            result =
+                JsonSerializer.Deserialize<
+                    Dictionary<string, string>
+                >(
+                    generatedText
+                );
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidOperationException(
+                "Gemini trả về JSON không hợp lệ.",
+                ex
+            );
+        }
+
+        if (result == null)
+        {
+            throw new InvalidOperationException(
+                "Không thể chuyển kết quả Gemini thành Dictionary."
+            );
+        }
+
+        // ---------------------------------------------------------
+        // Kiểm tra field.
+        // ---------------------------------------------------------
+
+        foreach (var fieldId in fieldIds)
+        {
+            if (!result.ContainsKey(fieldId))
+            {
+                throw new InvalidOperationException(
+                    $"Gemini không trả về field: {fieldId}"
+                );
+            }
+
+            result[fieldId] ??=
+                string.Empty;
+        }
+
+        // ---------------------------------------------------------
+        // Không cho phép field ngoài template.
+        // ---------------------------------------------------------
+
+        var unexpectedKeys =
+            result.Keys
+                .Where(
+                    key =>
+                        !fieldIds.Contains(
+                            key,
+                            StringComparer.Ordinal
+                        )
+                )
+                .ToList();
+
+        if (unexpectedKeys.Count > 0)
+        {
+            throw new InvalidOperationException(
+                "Gemini trả về field không tồn tại trong template: " +
+                string.Join(
+                    ", ",
+                    unexpectedKeys
+                )
+            );
+        }
+
+        return result;
+    }
+
+    // =========================================================
     // 3. GỌI GEMINI API
     // =========================================================
 

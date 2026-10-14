@@ -1,4 +1,9 @@
+
 import axios from 'axios'
+
+// =========================================================
+// TẠO AXIOS INSTANCE DÙNG CHUNG CHO BACKEND
+// =========================================================
 
 const api = axios.create({
   baseURL: 'http://localhost:5221/api',
@@ -6,59 +11,42 @@ const api = axios.create({
 
 // =========================================================
 // REQUEST INTERCEPTOR
+// Tự động thêm JWT và xử lý request upload file.
 // =========================================================
+
 api.interceptors.request.use(
   (config) => {
-    // Lấy JWT token đã lưu sau khi đăng nhập.
+    // Lấy JWT token sau khi người dùng đăng nhập.
     const token = localStorage.getItem('token')
 
-    // Nếu có token thì gửi token lên Backend.
+    // Nếu có token thì gửi lên Backend để xác thực.
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
 
-    // =====================================================
-    // XỬ LÝ UPLOAD FILE
-    // =====================================================
-    //
-    // Khi gửi FormData:
-    //
-    // Browser/Axios sẽ tự tạo:
-    //
-    // multipart/form-data; boundary=...
-    //
-    // Vì vậy không được ép request thành:
-    //
-    // application/json
-    //
+    // FormData dùng để upload file.
+    // Để trình duyệt/Axios tự thiết lập Content-Type
+    // cùng boundary phù hợp cho multipart/form-data.
     if (config.data instanceof FormData) {
-      delete config.headers['Content-Type']
-    } else {
-      // Những request thông thường như:
-      // POST tạo mẫu
-      // PUT sửa mẫu
-      // POST đăng nhập
-      // ...
-      // vẫn gửi JSON.
-      config.headers['Content-Type'] = 'application/json'
+      config.headers.delete('Content-Type')
     }
+
+    // Với request JSON thông thường, Axios tự xử lý
+    // việc tuần tự hóa dữ liệu và Content-Type.
 
     return config
   },
-  (error) => {
-    return Promise.reject(error)
-  },
+  (error) => Promise.reject(error),
 )
 
 // =========================================================
 // RESPONSE INTERCEPTOR
 // =========================================================
+
 api.interceptors.response.use(
-  (response) => {
-    return response
-  },
+  (response) => response,
   (error) => {
-    // Nếu JWT hết hạn hoặc không hợp lệ.
+    // JWT hết hạn hoặc không hợp lệ.
     if (error.response?.status === 401) {
       localStorage.removeItem('token')
       localStorage.removeItem('currentUser')

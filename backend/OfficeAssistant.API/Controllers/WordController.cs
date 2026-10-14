@@ -126,6 +126,30 @@ public class WordController : ControllerBase
         }
 
         // =====================================================
+        // TẠO FILE WORD TẠM ĐỂ PHÂN TÍCH TEMPLATE
+        // =====================================================
+
+        // Thư mục chứa template trung gian.
+        var tempDirectory =
+            Path.Combine(
+                _environment.ContentRootPath,
+                "Storage",
+                "Temp"
+            );
+
+        // Tạo thư mục nếu chưa tồn tại.
+        Directory.CreateDirectory(
+            tempDirectory
+        );
+
+        // Tạo tên file tạm duy nhất.
+        var temporaryTemplatePath =
+            Path.Combine(
+                tempDirectory,
+                $"AI_Template_{Guid.NewGuid():N}.docx"
+            );
+
+        // =====================================================
         // 6. TẠO THƯ MỤC LƯU FILE WORD SINH RA
         // =====================================================
 
@@ -327,40 +351,72 @@ public class WordController : ControllerBase
             });
         }
 
+        // =====================================================
+        // 6. TẠO FILE WORD TẠM
+        // =====================================================
+
+        var tempDirectory =
+            Path.Combine(
+                _environment.ContentRootPath,
+                "Storage",
+                "Temp"
+            );
+
+        Directory.CreateDirectory(
+            tempDirectory
+        );
+
+        var temporaryTemplatePath =
+            Path.Combine(
+                tempDirectory,
+                $"AI_Template_{Guid.NewGuid():N}.docx"
+            );
+
         try
         {
             // =================================================
-            // 6. ĐỌC PLACEHOLDER TỪ TEMPLATE
+            // 7. PHÂN TÍCH TEMPLATE TỰ NHIÊN
             // =================================================
 
-            var placeholders =
-                _wordTemplateService.GetPlaceholders(
-                    templateFilePath
+            var analyzedTemplate =
+                _wordTemplateService.PrepareNaturalTemplateForAI(
+                    templateFilePath,
+                    temporaryTemplatePath
                 );
 
-            if (placeholders.Count == 0)
+            // =================================================
+            // 8. LẤY DANH SÁCH FIELD
+            // =================================================
+
+            var fieldIds =
+                analyzedTemplate.Fields
+                    .Select(x => x.FieldId)
+                    .ToList();
+
+            if (fieldIds.Count == 0)
             {
                 return BadRequest(new
                 {
                     message =
-                        "Template không chứa placeholder dạng {{...}}."
+                        "Không tìm thấy vùng cần AI điền trong mẫu Word."
                 });
             }
 
             // =================================================
-            // 7. GỌI GEMINI
+            // 9. GỌI GEMINI
             // =================================================
 
             var replacements =
-                await _aiService.GenerateDocumentFieldsAsync(
-                    template.DocumentType,
+                await _aiService.GenerateNaturalTemplateFieldsAsync(
+                    request.DocumentType,
                     template.TemplateName,
                     request.UserPrompt,
-                    placeholders
+                    analyzedTemplate.TemplateText,
+                    fieldIds
                 );
 
             // =================================================
-            // 8. TẠO THƯ MỤC GENERATED
+            // 10. TẠO THƯ MỤC GENERATED
             // =================================================
 
             var generatedDirectory =
@@ -375,7 +431,7 @@ public class WordController : ControllerBase
             );
 
             // =================================================
-            // 9. ĐẶT TÊN FILE
+            // 11. TẠO TÊN FILE
             // =================================================
 
             var generatedFileName =
@@ -388,17 +444,17 @@ public class WordController : ControllerBase
                 );
 
             // =================================================
-            // 10. ÁP DỤNG NỘI DUNG AI VÀO TEMPLATE
+            // 12. ĐIỀN AI VÀO FILE WORD TẠM
             // =================================================
 
             _wordTemplateService.GenerateDocument(
-                templateFilePath,
+                temporaryTemplatePath,
                 generatedFilePath,
                 replacements
             );
 
             // =================================================
-            // 11. KIỂM TRA FILE
+            // 13. KIỂM TRA FILE
             // =================================================
 
             if (!System.IO.File.Exists(
@@ -415,7 +471,7 @@ public class WordController : ControllerBase
             }
 
             // =================================================
-            // 12. ĐỌC FILE
+            // 14. ĐỌC FILE
             // =================================================
 
             var fileBytes =
@@ -424,7 +480,7 @@ public class WordController : ControllerBase
                 );
 
             // =================================================
-            // 13. TRẢ FILE CHO FRONTEND
+            // 15. TRẢ FILE
             // =================================================
 
             return File(
@@ -457,6 +513,26 @@ public class WordController : ControllerBase
                         ex.Message
                 }
             );
+        }
+        finally
+        {
+            // =================================================
+            // 16. XÓA FILE TẠM
+            // =================================================
+
+            if (System.IO.File.Exists(
+                    temporaryTemplatePath))
+            {
+                try
+                {
+                    System.IO.File.Delete(
+                        temporaryTemplatePath
+                    );
+                }
+                catch
+                {
+                }
+            }
         }
     }
 }
