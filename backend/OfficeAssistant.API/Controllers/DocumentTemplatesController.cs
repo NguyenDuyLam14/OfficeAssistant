@@ -63,6 +63,7 @@ public class DocumentTemplatesController : ControllerBase
     // Tạo một mẫu văn bản mới
     // =========================================================
     [HttpPost]
+    [Authorize(Roles = "Admin")] // Chỉ Admin được tạo mẫu
     public async Task<ActionResult<DocumentTemplate>> CreateTemplate(
         CreateDocumentTemplateDto request)
     {
@@ -101,7 +102,6 @@ public class DocumentTemplatesController : ControllerBase
         {
             TemplateName = request.TemplateName.Trim(),
             DocumentType = request.DocumentType.Trim(),
-            FilePath = request.FilePath,
             Description = request.Description,
             IsActive = true,
             CreatedAt = DateTime.UtcNow
@@ -122,6 +122,7 @@ public class DocumentTemplatesController : ControllerBase
     // Cập nhật thông tin mẫu văn bản
     // =========================================================
     [HttpPut("{id:int}")]
+    [Authorize(Roles = "Admin")] // Chỉ Admin được sửa mẫu
     public async Task<IActionResult> UpdateTemplate(
         int id,
         UpdateDocumentTemplateDto request)
@@ -169,7 +170,6 @@ public class DocumentTemplatesController : ControllerBase
 
         template.TemplateName = request.TemplateName.Trim();
         template.DocumentType = request.DocumentType.Trim();
-        template.FilePath = request.FilePath;
         template.Description = request.Description;
         template.IsActive = request.IsActive;
 
@@ -183,6 +183,7 @@ public class DocumentTemplatesController : ControllerBase
     // Xóa mẫu văn bản
     // =========================================================
     [HttpDelete("{id:int}")]
+    [Authorize(Roles = "Admin")] // Chỉ Admin được xóa mẫu
     public async Task<IActionResult> DeleteTemplate(int id)
     {
         var template = await _context.DocumentTemplates
@@ -228,6 +229,7 @@ public class DocumentTemplatesController : ControllerBase
     // file = file .docx
     // =========================================================
     [HttpPost("{id:int}/upload")]
+    [Authorize(Roles = "Admin")] // Chỉ Admin được tải lên hoặc thay file mẫu
     [RequestSizeLimit(10 * 1024 * 1024)]
     public async Task<IActionResult> UploadTemplateFile(
     int id,

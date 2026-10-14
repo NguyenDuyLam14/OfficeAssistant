@@ -1,19 +1,17 @@
+
 namespace OfficeAssistant.API.DTOs;
 
 public class UpdateDocumentTemplateDto
 {
-    // Tên template.
+    // Tên mẫu văn bản.
     public string TemplateName { get; set; } = string.Empty;
 
     // Loại văn bản.
     public string DocumentType { get; set; } = string.Empty;
 
-    // Đường dẫn file Word template.
-    public string? FilePath { get; set; }
-
-    // Mô tả template.
+    // Mô tả mẫu văn bản.
     public string? Description { get; set; }
 
-    // Cho phép bật/tắt template.
+    // Cho phép bật hoặc tắt mẫu văn bản.
     public bool IsActive { get; set; } = true;
 }
