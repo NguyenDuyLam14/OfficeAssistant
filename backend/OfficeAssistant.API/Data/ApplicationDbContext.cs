@@ -31,6 +31,12 @@ public class ApplicationDbContext : DbContext
     /// </summary>
     public DbSet<Document> Documents => Set<Document>();
 
+    /// <summary>
+    /// Các kết nối Gmail của người dùng.
+    /// </summary>
+    public DbSet<GmailConnection> GmailConnections =>
+        Set<GmailConnection>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -104,6 +110,36 @@ public class ApplicationDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(x => x.DocumentTemplateId)
                 .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // Cấu hình bảng GmailConnections.
+        modelBuilder.Entity<GmailConnection>(entity =>
+        {
+            entity.HasKey(x => x.GmailConnectionId);
+
+            entity.Property(x => x.GmailAddress)
+                .HasMaxLength(255)
+                .IsRequired();
+
+            entity.Property(x => x.AccessToken)
+                .HasMaxLength(4000)
+                .IsRequired();
+
+            entity.Property(x => x.RefreshToken)
+                .HasMaxLength(4000);
+
+            // Mỗi người dùng chỉ có một kết nối Gmail trong phiên bản đầu.
+            entity.HasIndex(x => x.UserId)
+                .IsUnique();
+
+            // Mỗi địa chỉ Gmail chỉ được liên kết với một tài khoản.
+            entity.HasIndex(x => x.GmailAddress)
+                .IsUnique();
+
+            entity.HasOne(x => x.User)
+                .WithMany()
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

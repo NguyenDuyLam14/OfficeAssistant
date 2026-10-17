@@ -104,6 +104,51 @@ namespace OfficeAssistant.API.Migrations
                     b.ToTable("DocumentTemplates");
                 });
 
+            modelBuilder.Entity("OfficeAssistant.API.Models.GmailConnection", b =>
+                {
+                    b.Property<int>("GmailConnectionId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("GmailConnectionId"));
+
+                    b.Property<string>("AccessToken")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("GmailAddress")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("RefreshToken")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<DateTime?>("TokenExpiresAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("GmailConnectionId");
+
+                    b.HasIndex("GmailAddress")
+                        .IsUnique();
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("GmailConnections");
+                });
+
             modelBuilder.Entity("OfficeAssistant.API.Models.User", b =>
                 {
                     b.Property<int>("UserId")
@@ -160,6 +205,17 @@ namespace OfficeAssistant.API.Migrations
                         .IsRequired();
 
                     b.Navigation("DocumentTemplate");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("OfficeAssistant.API.Models.GmailConnection", b =>
+                {
+                    b.HasOne("OfficeAssistant.API.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("User");
                 });

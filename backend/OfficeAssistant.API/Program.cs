@@ -9,6 +9,8 @@ using OfficeAssistant.API.Services;
 using OfficeAssistant.API.Services.AI;
 using OfficeAssistant.API.Services.Word;
 
+using OfficeAssistant.API.Services.Email;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // ============================================================
@@ -72,6 +74,12 @@ builder.Services.AddScoped<IAIService, GeminiService>();
 
 // Service xử lý file Word bằng OpenXML.
 builder.Services.AddScoped<WordTemplateService>();
+
+builder.Services.AddSingleton<GmailTokenProtector>();
+
+builder.Services.AddScoped<GmailOAuthService>();
+
+builder.Services.AddSingleton<GmailOAuthStateStore>();
 
 // ============================================================
 // CẤU HÌNH AUTHENTICATION - JWT BEARER
@@ -142,6 +150,9 @@ builder.Services.AddAuthorization();
 // CẤU HÌNH OPENAPI
 // ============================================================
 builder.Services.AddOpenApi();
+
+// Mã hóa và giải mã token Google trước khi lưu/đọc từ SQL Server.
+builder.Services.AddDataProtection();
 
 var app = builder.Build();
 
