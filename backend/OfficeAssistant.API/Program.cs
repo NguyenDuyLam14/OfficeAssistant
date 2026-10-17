@@ -81,6 +81,8 @@ builder.Services.AddScoped<GmailOAuthService>();
 
 builder.Services.AddSingleton<GmailOAuthStateStore>();
 
+builder.Services.AddScoped<GmailMessageReader>();
+
 // ============================================================
 // CẤU HÌNH AUTHENTICATION - JWT BEARER
 // ============================================================

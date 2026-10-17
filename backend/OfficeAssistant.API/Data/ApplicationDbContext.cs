@@ -37,6 +37,19 @@ public class ApplicationDbContext : DbContext
     public DbSet<GmailConnection> GmailConnections =>
         Set<GmailConnection>();
 
+    /// <summary>
+    /// Các lịch công việc được AI phát hiện từ email.
+    /// </summary>
+    public DbSet<DetectedWorkEvent> DetectedWorkEvents =>
+        Set<DetectedWorkEvent>();
+
+    /// <summary>
+    /// Các thông báo trong ứng dụng.
+    /// </summary>
+    public DbSet<AppNotification> AppNotifications =>
+        Set<AppNotification>();
+
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -141,5 +154,84 @@ public class ApplicationDbContext : DbContext
                 .HasForeignKey(x => x.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
+
+
+        // Cấu hình bảng DetectedWorkEvents.
+        modelBuilder.Entity<DetectedWorkEvent>(entity =>
+        {
+            entity.HasKey(x => x.DetectedWorkEventId);
+
+            entity.Property(x => x.GmailMessageId)
+                .HasMaxLength(200)
+                .IsRequired();
+
+            entity.Property(x => x.EventType)
+                .HasMaxLength(50)
+                .IsRequired();
+
+            entity.Property(x => x.Title)
+                .HasMaxLength(300)
+                .IsRequired();
+
+            entity.Property(x => x.Description)
+                .HasMaxLength(4000);
+
+            entity.Property(x => x.TimeZoneId)
+                .HasMaxLength(100)
+                .IsRequired();
+
+            entity.Property(x => x.Status)
+                .HasMaxLength(30)
+                .IsRequired();
+
+            // Một email chỉ tạo tối đa một đề xuất lịch
+            // cho cùng một người dùng trong phiên bản đầu.
+            entity.HasIndex(x => new
+            {
+                x.UserId,
+                x.GmailMessageId
+            }).IsUnique();
+
+            entity.HasOne(x => x.User)
+                .WithMany()
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Cấu hình bảng AppNotifications.
+        modelBuilder.Entity<AppNotification>(entity =>
+        {
+            entity.HasKey(x => x.AppNotificationId);
+
+            entity.Property(x => x.Title)
+                .HasMaxLength(200)
+                .IsRequired();
+
+            entity.Property(x => x.Message)
+                .HasMaxLength(1000)
+                .IsRequired();
+
+            entity.Property(x => x.NotificationType)
+                .HasMaxLength(50)
+                .IsRequired();
+
+            entity.HasIndex(x => new
+            {
+                x.UserId,
+                x.IsRead,
+                x.CreatedAtUtc
+            });
+
+            entity.HasOne(x => x.User)
+                .WithMany()
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            entity.HasOne(x => x.DetectedWorkEvent)
+                .WithMany()
+                .HasForeignKey(x => x.DetectedWorkEventId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
     }
 }
