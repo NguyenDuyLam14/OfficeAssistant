@@ -70,17 +70,12 @@ builder.Services.AddScoped<JwtService>();
 // Đăng ký AI Service để Controller có thể sử dụng.
 builder.Services.AddHttpClient();
 
-// Đăng ký GeminiService dùng chung cho các chức năng AI.
-builder.Services.AddScoped<GeminiService>();
+// Dùng Ollama cho toàn bộ chức năng AI.
+builder.Services.AddHttpClient<OllamaService>();
 
-// Dùng cùng một instance GeminiService cho giao diện IAIService.
 builder.Services.AddScoped<IAIService>(
     serviceProvider =>
-        serviceProvider.GetRequiredService<GeminiService>());
-
-// Đăng ký OllamaService để phân tích email bằng Qwen3 chạy cục bộ.
-// HttpClient được quản lý bởi IHttpClientFactory.
-builder.Services.AddHttpClient<OllamaService>();
+        serviceProvider.GetRequiredService<OllamaService>());
 
 // Service xử lý file Word bằng OpenXML.
 builder.Services.AddScoped<WordTemplateService>();

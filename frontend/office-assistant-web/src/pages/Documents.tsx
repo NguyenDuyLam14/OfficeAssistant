@@ -705,7 +705,7 @@ function Documents() {
             </h2>
 
             <p className="mt-1 text-sm text-slate-500">
-              Nhập yêu cầu để Gemini hỗ trợ soạn thảo nội dung văn bản.
+              Nhập yêu cầu để AI hỗ trợ soạn thảo nội dung văn bản.
             </p>
           </div>
         </div>
