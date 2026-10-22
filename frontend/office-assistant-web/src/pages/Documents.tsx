@@ -123,10 +123,10 @@ function Documents() {
   // Yêu cầu cụ thể gửi cho AI.
   const [aiPrompt, setAiPrompt] = useState("");
 
-  // Nội dung văn bản do Gemini tạo ra.
+  // Nội dung văn bản do AI tạo ra.
   const [aiContent, setAiContent] = useState("");
 
-  // Trạng thái đang gọi API Gemini.
+  // Trạng thái đang gọi API AI.
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
 
   // Lỗi riêng của chức năng AI.
@@ -143,9 +143,9 @@ function Documents() {
   const [wordError, setWordError] = useState("");
 
   /**
-   * Gọi API backend để Gemini sinh nội dung văn bản.
+   * Gọi API backend để AI sinh nội dung văn bản.
    *
-   * Frontend không gọi Gemini trực tiếp.
+   * Frontend không gọi AI trực tiếp.
    * Frontend chỉ gọi ASP.NET Core API.
    *
    * Luồng:
@@ -154,7 +154,7 @@ function Documents() {
    *   ↓
    * ASP.NET Core API
    *   ↓
-   * Gemini API
+   * AI API
    *   ↓
    * ASP.NET Core
    *   ↓
@@ -200,7 +200,7 @@ function Documents() {
         } satisfies GenerateDocumentRequest,
       );
 
-      // Lấy nội dung Gemini trả về.
+      // Lấy nội dung AI trả về.
       setAiContent(response.data.content);
 
       // Xóa lỗi nếu trước đó có lỗi.
@@ -235,7 +235,7 @@ function Documents() {
    *   ↓
    * ASP.NET Core
    *   ↓
-   * Gemini
+   * AI
    *   ↓
    * Lấy placeholder từ template
    *   ↓

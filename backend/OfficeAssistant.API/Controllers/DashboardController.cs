@@ -5,6 +5,8 @@ using Microsoft.EntityFrameworkCore;
 using OfficeAssistant.API.Data;
 using OfficeAssistant.API.DTOs;
 
+using System.Security.Claims;
+
 namespace OfficeAssistant.API.Controllers;
 
 [Authorize]
@@ -23,24 +25,35 @@ public class DashboardController : ControllerBase
     [HttpGet("stats")]
     public async Task<IActionResult> GetStats()
     {
-        // Đếm tổng số văn bản trong cơ sở dữ liệu.
+        if (!int.TryParse(
+                User.FindFirstValue(ClaimTypes.NameIdentifier),
+                out var userId))
+        {
+            return Unauthorized();
+        }
+
         var totalDocuments = await _context.Documents
-            .CountAsync();
+            .CountAsync(d => d.UserId == userId);
 
-        // Email và công việc sẽ được kết nối
-        // sau khi xây dựng các bảng tương ứng.
-        var totalEmails = 0;
-        var totalTasks = 0;
-        var upcomingTasks = 0;
+        // Công việc = sự kiện đã xác nhận của user.
+        var totalTasks = await _context.DetectedWorkEvents
+            .CountAsync(e => e.UserId == userId && e.Status == "Confirmed");
 
-        var result = new DashboardStatsDto
+        var weekLater = DateTime.UtcNow.AddDays(7);
+
+        var upcomingTasks = await _context.DetectedWorkEvents
+            .CountAsync(e =>
+                e.UserId == userId &&
+                e.Status == "Confirmed" &&
+                e.DueAtUtc != null &&
+                e.DueAtUtc <= weekLater);
+
+        return Ok(new DashboardStatsDto
         {
             TotalDocuments = totalDocuments,
-            TotalEmails = totalEmails,
+            TotalEmails = 0,
             TotalTasks = totalTasks,
             UpcomingTasks = upcomingTasks
-        };
-
-        return Ok(result);
+        });
     }
 }

@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 namespace OfficeAssistant.API.DTOs.Email;
 
 /// <summary>
-/// Kết quả nhận diện sự kiện công việc từ nội dung email bằng Gemini.
+/// Kết quả nhận diện sự kiện công việc từ nội dung email bằng AI.
 /// Đây là dữ liệu đề xuất, chưa phải sự kiện đã được người dùng xác nhận.
 /// </summary>
 public sealed class WorkEventExtractionResult

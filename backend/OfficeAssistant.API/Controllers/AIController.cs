@@ -38,9 +38,9 @@ public class AIController : ControllerBase
     ///   ↓
     /// lấy thông tin DocumentTemplate
     ///   ↓
-    /// GeminiService
+    /// AIService
     ///   ↓
-    /// Gemini API
+    /// AI API
     ///   ↓
     /// nội dung văn bản
     /// </summary>

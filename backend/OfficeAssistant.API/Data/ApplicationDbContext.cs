@@ -49,6 +49,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<AppNotification> AppNotifications =>
         Set<AppNotification>();
 
+    public DbSet<ProcessedGmailMessage> ProcessedGmailMessages =>
+        Set<ProcessedGmailMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -231,6 +233,23 @@ public class ApplicationDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(x => x.DetectedWorkEventId)
                 .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // Trong OnModelCreating:
+        modelBuilder.Entity<ProcessedGmailMessage>(entity =>
+        {
+            entity.HasKey(x => x.ProcessedGmailMessageId);
+
+            entity.Property(x => x.GmailMessageId)
+                .HasMaxLength(200)
+                .IsRequired();
+
+            entity.HasIndex(x => new { x.UserId, x.GmailMessageId }).IsUnique();
+
+            entity.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
     }

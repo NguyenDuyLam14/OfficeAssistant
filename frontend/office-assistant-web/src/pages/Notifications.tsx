@@ -10,17 +10,17 @@ import {
 import api from "../services/api";
 
 type NotificationItem = {
-  appNotificationId: number;
+  id: number;
   title: string;
   message: string;
-  notificationType: string;
+  type: string;
   detectedWorkEventId: number | null;
   isRead: boolean;
-  createdAt: string;
+  createdAtUtc: string;
 };
 
 type DetectedEvent = {
-  detectedWorkEventId: number;
+  id: number;
   title: string;
   description: string;
   eventType: string;
@@ -44,7 +44,9 @@ type EventResponse = {
 function formatDate(value: string | null | undefined) {
   if (!value) return "Chưa xác định thời gian";
 
-  const date = new Date(value);
+  // Backend trả UTC nhưng không có "Z" → thêm vào để JS hiểu đúng.
+  const hasTimeZone = /([zZ]|[+-]\d{2}:\d{2})$/.test(value);
+  const date = new Date(hasTimeZone ? value : value + "Z");
 
   if (Number.isNaN(date.getTime())) return "Chưa xác định thời gian";
 
@@ -121,7 +123,7 @@ function Notifications() {
 
       setNotifications((current) =>
         current.map((item) =>
-          item.appNotificationId === id ? { ...item, isRead: true } : item,
+          item.id === id ? { ...item, isRead: true } : item,
         ),
       );
 
@@ -163,9 +165,7 @@ function Notifications() {
       await api.patch(`/DetectedWorkEvents/${id}/${action}`);
 
       // Xóa khỏi danh sách chờ duyệt sau khi thao tác thành công.
-      setEvents((current) =>
-        current.filter((event) => event.detectedWorkEventId !== id),
-      );
+      setEvents((current) => current.filter((event) => event.id !== id));
     } catch (err) {
       console.error("Không thể cập nhật sự kiện:", err);
       setError("Không thể cập nhật sự kiện. Vui lòng thử lại.");
@@ -299,7 +299,7 @@ function Notifications() {
               <div className="divide-y divide-slate-100">
                 {notifications.map((item) => (
                   <article
-                    key={item.appNotificationId}
+                    key={item.id}
                     className={`flex flex-col gap-4 p-5 sm:flex-row sm:items-start sm:justify-between ${
                       item.isRead ? "bg-white" : "bg-blue-50/50"
                     }`}
@@ -323,7 +323,7 @@ function Notifications() {
                           {item.message}
                         </p>
                         <p className="mt-2 text-xs text-slate-400">
-                          {formatDate(item.createdAt)}
+                          {formatDate(item.createdAtUtc)}
                         </p>
                       </div>
                     </div>
@@ -331,7 +331,7 @@ function Notifications() {
                     {!item.isRead && (
                       <button
                         type="button"
-                        onClick={() => void markAsRead(item.appNotificationId)}
+                        onClick={() => void markAsRead(item.id)}
                         disabled={actionId !== null}
                         className="inline-flex shrink-0 items-center justify-center gap-2 self-start rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                       >
@@ -359,7 +359,7 @@ function Notifications() {
             ) : (
               events.map((event) => (
                 <article
-                  key={event.detectedWorkEventId}
+                  key={event.id}
                   className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
                 >
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -406,9 +406,7 @@ function Notifications() {
                     <div className="flex shrink-0 flex-wrap gap-2">
                       <button
                         type="button"
-                        onClick={() =>
-                          void updateEvent(event.detectedWorkEventId, "confirm")
-                        }
+                        onClick={() => void updateEvent(event.id, "confirm")}
                         disabled={actionId !== null}
                         className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
                       >
@@ -417,9 +415,7 @@ function Notifications() {
 
                       <button
                         type="button"
-                        onClick={() =>
-                          void updateEvent(event.detectedWorkEventId, "dismiss")
-                        }
+                        onClick={() => void updateEvent(event.id, "dismiss")}
                         disabled={actionId !== null}
                         className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                       >
@@ -429,12 +425,7 @@ function Notifications() {
                       {event.status === "Confirmed" && (
                         <button
                           type="button"
-                          onClick={() =>
-                            void updateEvent(
-                              event.detectedWorkEventId,
-                              "complete",
-                            )
-                          }
+                          onClick={() => void updateEvent(event.id, "complete")}
                           disabled={actionId !== null}
                           className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
                         >

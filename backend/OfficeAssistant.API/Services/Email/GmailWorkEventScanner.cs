@@ -17,20 +17,24 @@ public sealed class GmailWorkEventScanner
     private readonly GmailMessageReader _messageReader;
     private readonly OllamaService _ollamaService;
 
-    public GmailWorkEventScanner(
-        ApplicationDbContext db,
-        GmailMessageReader messageReader,
-        OllamaService ollamaService)
-    {
-        _db = db;
-        _messageReader = messageReader;
-        _ollamaService = ollamaService;
-    }
-
     /// <summary>
     /// Quét các email gần đây của một người dùng.
     /// Trả về số đề xuất công việc mới được lưu.
     /// </summary>
+    private readonly ILogger<GmailWorkEventScanner> _logger;
+
+    public GmailWorkEventScanner(
+        ApplicationDbContext db,
+        GmailMessageReader messageReader,
+        OllamaService ollamaService,
+        ILogger<GmailWorkEventScanner> logger)
+    {
+        _db = db;
+        _messageReader = messageReader;
+        _ollamaService = ollamaService;
+        _logger = logger;
+    }
+
     public async Task<int> ScanUserEmailsAsync(
         int userId,
         CancellationToken cancellationToken = default)
@@ -40,7 +44,6 @@ public sealed class GmailWorkEventScanner
             throw new ArgumentOutOfRangeException(nameof(userId));
         }
 
-        // Chỉ xử lý email gần đây để giới hạn số lần gọi Ollama.
         var messageIds = await _messageReader.GetMessageIdsAsync(
             userId,
             maxResults: 20,
@@ -53,11 +56,13 @@ public sealed class GmailWorkEventScanner
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            // Nếu email đã được xử lý thì bỏ qua để tránh tạo trùng.
-            var alreadyProcessed = await _db.DetectedWorkEvents
-                .AnyAsync(
-                    x => x.UserId == userId
-                         && x.GmailMessageId == messageId,
+            // Đã xử lý rồi (có sự kiện hoặc không) thì bỏ qua.
+            var alreadyProcessed =
+                await _db.ProcessedGmailMessages.AnyAsync(
+                    x => x.UserId == userId && x.GmailMessageId == messageId,
+                    cancellationToken)
+                || await _db.DetectedWorkEvents.AnyAsync(
+                    x => x.UserId == userId && x.GmailMessageId == messageId,
                     cancellationToken);
 
             if (alreadyProcessed)
@@ -67,26 +72,21 @@ public sealed class GmailWorkEventScanner
 
             try
             {
-                // Lấy nội dung email đầy đủ từ Gmail.
                 using var emailDocument =
                     await _messageReader.GetFullMessageAsync(
-                        userId,
-                        messageId,
-                        cancellationToken);
+                        userId, messageId, cancellationToken);
 
-                // Chuyển MIME của Gmail thành tiêu đề, người gửi,
-                // ngày gửi và nội dung văn bản.
-                var extractor = new GmailEmailContentExtractor();
-                var email = extractor.Extract(emailDocument);
+                var email = new GmailEmailContentExtractor()
+                    .Extract(emailDocument);
 
-                // Không gửi email rỗng đến Ollama.
+                // Email rỗng: đánh dấu đã xử lý, không gọi AI.
                 if (string.IsNullOrWhiteSpace(email.Subject)
                     && string.IsNullOrWhiteSpace(email.Body))
                 {
+                    await MarkProcessedAsync(userId, messageId, cancellationToken);
                     continue;
                 }
 
-                // Dùng chính OllamaService hiện có của dự án.
                 var result = await _ollamaService.AnalyzeWorkEventAsync(
                     email.Subject ?? string.Empty,
                     email.Sender ?? string.Empty,
@@ -94,15 +94,12 @@ public sealed class GmailWorkEventScanner
                     email.Body ?? string.Empty,
                     cancellationToken);
 
-                // Email không chứa sự kiện phù hợp.
+                // AI xác định không có sự kiện: nhớ lại để lần sau khỏi hỏi AI.
                 if (result is null)
                 {
+                    await MarkProcessedAsync(userId, messageId, cancellationToken);
                     continue;
                 }
-
-                // Chuẩn hóa thời gian về UTC.
-                var startAtUtc = ParseUtc(result.StartAt);
-                var dueAtUtc = ParseUtc(result.DueAt);
 
                 var detectedEvent = new DetectedWorkEvent
                 {
@@ -110,37 +107,37 @@ public sealed class GmailWorkEventScanner
                     GmailMessageId = messageId,
                     EventType = result.EventType,
                     Title = result.Title,
-                    Description = string.IsNullOrWhiteSpace(
-                        result.Description)
+                    Description = string.IsNullOrWhiteSpace(result.Description)
                         ? null
                         : result.Description,
-                    StartAtUtc = startAtUtc,
-                    DueAtUtc = dueAtUtc,
+                    StartAtUtc = ParseUtc(result.StartAt),
+                    DueAtUtc = ParseUtc(result.DueAt),
                     TimeZoneId = "Asia/Ho_Chi_Minh",
                     Status = "PendingReview",
                     DetectedAtUtc = DateTime.UtcNow
                 };
 
                 _db.DetectedWorkEvents.Add(detectedEvent);
-
-                // Lưu sự kiện trước để lấy khóa chính.
                 await _db.SaveChangesAsync(cancellationToken);
 
-                // Tạo thông báo liên kết với sự kiện vừa phát hiện.
-                var notification = new AppNotification
+                _db.AppNotifications.Add(new AppNotification
                 {
                     UserId = userId,
                     Title = "Phát hiện công việc mới",
                     Message = $"AI phát hiện đề xuất: {detectedEvent.Title}. "
                               + "Vui lòng kiểm tra trước khi xác nhận.",
                     NotificationType = "DetectedWorkEvent",
-                    DetectedWorkEventId =
-                        detectedEvent.DetectedWorkEventId,
+                    DetectedWorkEventId = detectedEvent.DetectedWorkEventId,
                     IsRead = false,
                     CreatedAtUtc = DateTime.UtcNow
-                };
+                });
 
-                _db.AppNotifications.Add(notification);
+                _db.ProcessedGmailMessages.Add(new ProcessedGmailMessage
+                {
+                    UserId = userId,
+                    GmailMessageId = messageId
+                });
+
                 await _db.SaveChangesAsync(cancellationToken);
 
                 createdCount++;
@@ -150,16 +147,38 @@ public sealed class GmailWorkEventScanner
             {
                 throw;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // Một email lỗi không làm dừng toàn bộ lượt quét.
-                // Chưa ghi log ở bước này; sẽ bổ sung logging
-                // khi tích hợp background worker.
+                _logger.LogWarning(
+                    ex,
+                    "Không thể xử lý email {MessageId} của UserId {UserId}.",
+                    messageId,
+                    userId);
+
+                // Xóa entity bị lỗi để không làm hỏng các lần SaveChanges sau.
+                _db.ChangeTracker.Clear();
+
+                // Cố ý KHÔNG đánh dấu đã xử lý: lần quét sau sẽ thử lại
+                // (ví dụ khi Ollama tạm thời chưa chạy).
                 continue;
             }
         }
 
         return createdCount;
+    }
+
+    private async Task MarkProcessedAsync(
+        int userId,
+        string messageId,
+        CancellationToken cancellationToken)
+    {
+        _db.ProcessedGmailMessages.Add(new ProcessedGmailMessage
+        {
+            UserId = userId,
+            GmailMessageId = messageId
+        });
+
+        await _db.SaveChangesAsync(cancellationToken);
     }
 
     /// <summary>

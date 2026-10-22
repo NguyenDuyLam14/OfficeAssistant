@@ -253,6 +253,33 @@ namespace OfficeAssistant.API.Migrations
                     b.ToTable("GmailConnections");
                 });
 
+            modelBuilder.Entity("OfficeAssistant.API.Models.ProcessedGmailMessage", b =>
+                {
+                    b.Property<int>("ProcessedGmailMessageId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("ProcessedGmailMessageId"));
+
+                    b.Property<string>("GmailMessageId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("ProcessedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("ProcessedGmailMessageId");
+
+                    b.HasIndex("UserId", "GmailMessageId")
+                        .IsUnique();
+
+                    b.ToTable("ProcessedGmailMessages");
+                });
+
             modelBuilder.Entity("OfficeAssistant.API.Models.User", b =>
                 {
                     b.Property<int>("UserId")
@@ -351,6 +378,15 @@ namespace OfficeAssistant.API.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("OfficeAssistant.API.Models.ProcessedGmailMessage", b =>
+                {
+                    b.HasOne("OfficeAssistant.API.Models.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 #pragma warning restore 612, 618
         }

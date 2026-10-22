@@ -126,30 +126,6 @@ public class WordController : ControllerBase
         }
 
         // =====================================================
-        // TẠO FILE WORD TẠM ĐỂ PHÂN TÍCH TEMPLATE
-        // =====================================================
-
-        // Thư mục chứa template trung gian.
-        var tempDirectory =
-            Path.Combine(
-                _environment.ContentRootPath,
-                "Storage",
-                "Temp"
-            );
-
-        // Tạo thư mục nếu chưa tồn tại.
-        Directory.CreateDirectory(
-            tempDirectory
-        );
-
-        // Tạo tên file tạm duy nhất.
-        var temporaryTemplatePath =
-            Path.Combine(
-                tempDirectory,
-                $"AI_Template_{Guid.NewGuid():N}.docx"
-            );
-
-        // =====================================================
         // 6. TẠO THƯ MỤC LƯU FILE WORD SINH RA
         // =====================================================
 
@@ -212,9 +188,7 @@ public class WordController : ControllerBase
                 new
                 {
                     message =
-                        "Không thể tạo file Word.",
-                    detail =
-                        ex.Message
+                        "Không thể tạo file Word."
                 }
             );
         }
@@ -403,7 +377,7 @@ public class WordController : ControllerBase
             }
 
             // =================================================
-            // 9. GỌI GEMINI
+            // 9. GỌI AI
             // =================================================
 
             var replacements =
@@ -508,9 +482,7 @@ public class WordController : ControllerBase
                 new
                 {
                     message =
-                        "Không thể tạo file Word bằng AI.",
-                    detail =
-                        ex.Message
+                        "Không thể tạo file Word bằng AI."
                 }
             );
         }

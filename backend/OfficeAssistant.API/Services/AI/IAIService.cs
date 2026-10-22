@@ -19,7 +19,7 @@ public interface IAIService
     ///
     /// Kết quả trả về Dictionary:
     /// Key   = placeholder
-    /// Value = nội dung Gemini sinh ra
+    /// Value = nội dung AI sinh ra
     /// </summary>
     Task<Dictionary<string, string>> GenerateDocumentFieldsAsync(
         string documentType,

@@ -22,17 +22,20 @@ public sealed class EmailsController : ControllerBase
     private readonly GmailOAuthService _oauthService;
     private readonly GmailOAuthStateStore _stateStore;
     private readonly GmailTokenProtector _tokenProtector;
+    private readonly IConfiguration _configuration;
 
     public EmailsController(
         ApplicationDbContext context,
         GmailOAuthService oauthService,
         GmailOAuthStateStore stateStore,
-        GmailTokenProtector tokenProtector)
+        GmailTokenProtector tokenProtector,
+        IConfiguration configuration)
     {
         _context = context;
         _oauthService = oauthService;
         _stateStore = stateStore;
         _tokenProtector = tokenProtector;
+        _configuration = configuration;
     }
 
     /// <summary>
@@ -214,12 +217,10 @@ public sealed class EmailsController : ControllerBase
                 connection.UpdatedAtUtc = now;
             }
 
-            await _context.SaveChangesAsync(cancellationToken);
+            var frontendUrl =
+                _configuration["Frontend:BaseUrl"] ?? "http://localhost:5173";
 
-            // Không trả access token hoặc refresh token cho frontend.
-            // Chuyển về frontend để người dùng tiếp tục sử dụng ứng dụng.
-            return Redirect(
-                "http://localhost:5173/emails?gmailConnected=true");
+            return Redirect($"{frontendUrl}/emails?gmailConnected=true");
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
