@@ -111,6 +111,7 @@ function Header({ sidebarOpen, onToggleSidebar }: HeaderProps) {
         =================================================== */}
 
         <button
+          onClick={() => navigate("/notifications")}
           type="button"
           className="relative rounded-lg p-2 text-slate-600 hover:bg-slate-100"
           title="Thông báo"

@@ -150,7 +150,7 @@ public sealed class EmailsController : ControllerBase
             var gmailUsedByAnotherUser = await _context.GmailConnections
                 .AnyAsync(
                     x => x.GmailAddress == gmailAddress &&
-                         x.UserId != userId,
+                        x.UserId != userId,
                     cancellationToken);
 
             if (gmailUsedByAnotherUser)

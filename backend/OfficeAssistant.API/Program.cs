@@ -70,7 +70,17 @@ builder.Services.AddScoped<JwtService>();
 // Đăng ký AI Service để Controller có thể sử dụng.
 builder.Services.AddHttpClient();
 
-builder.Services.AddScoped<IAIService, GeminiService>();
+// Đăng ký GeminiService dùng chung cho các chức năng AI.
+builder.Services.AddScoped<GeminiService>();
+
+// Dùng cùng một instance GeminiService cho giao diện IAIService.
+builder.Services.AddScoped<IAIService>(
+    serviceProvider =>
+        serviceProvider.GetRequiredService<GeminiService>());
+
+// Đăng ký OllamaService để phân tích email bằng Qwen3 chạy cục bộ.
+// HttpClient được quản lý bởi IHttpClientFactory.
+builder.Services.AddHttpClient<OllamaService>();
 
 // Service xử lý file Word bằng OpenXML.
 builder.Services.AddScoped<WordTemplateService>();
@@ -81,7 +91,14 @@ builder.Services.AddScoped<GmailOAuthService>();
 
 builder.Services.AddSingleton<GmailOAuthStateStore>();
 
+// Đăng ký dịch vụ đọc email Gmail.
 builder.Services.AddScoped<GmailMessageReader>();
+
+// Đăng ký bộ quét email để phát hiện công việc.
+builder.Services.AddScoped<GmailWorkEventScanner>();
+
+// Tự động quét Gmail và phát hiện công việc trong nền.
+builder.Services.AddHostedService<GmailWorkEventBackgroundService>();
 
 // ============================================================
 // CẤU HÌNH AUTHENTICATION - JWT BEARER

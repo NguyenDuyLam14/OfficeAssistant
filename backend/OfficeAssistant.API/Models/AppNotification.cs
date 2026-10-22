@@ -1,4 +1,3 @@
-
 namespace OfficeAssistant.API.Models;
 
 /// <summary>
