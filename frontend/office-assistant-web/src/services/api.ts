@@ -46,10 +46,20 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    // JWT hết hạn hoặc không hợp lệ.
-    if (error.response?.status === 401) {
+    const status = error.response?.status
+    const requestUrl: string = error.config?.url ?? ''
+
+    // Đăng nhập sai mật khẩu cũng trả 401.
+    // Bỏ qua request login để trang Login còn hiện được thông báo lỗi.
+    const isLoginRequest = requestUrl.includes('/auth/login')
+
+    if (status === 401 && !isLoginRequest) {
       localStorage.removeItem('token')
       localStorage.removeItem('currentUser')
+
+      if (window.location.pathname !== '/login') {
+        window.location.replace('/login')
+      }
     }
 
     return Promise.reject(error)

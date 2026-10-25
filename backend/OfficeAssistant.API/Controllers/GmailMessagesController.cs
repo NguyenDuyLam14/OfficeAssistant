@@ -189,6 +189,36 @@ public sealed class GmailMessagesController : ControllerBase
         return await client.SendAsync(request, cancellationToken);
     }
 
+    private IActionResult ReconnectRequired(string message)
+    {
+        // Dùng 409 thay vì 401 để frontend không nhầm với JWT hết hạn.
+        return Conflict(new
+        {
+            code = "gmail_reconnect_required",
+            message
+        });
+    }
+
+    private IActionResult GmailFailure(
+        HttpResponseMessage response,
+        string message)
+    {
+        var status = (int)response.StatusCode;
+
+        // Google từ chối token: cần kết nối lại, không phải lỗi đăng nhập app.
+        if (status == 401)
+        {
+            return ReconnectRequired(
+                "Quyền truy cập Gmail không còn hiệu lực. Vui lòng kết nối lại Gmail.");
+        }
+
+        return StatusCode(status, new
+        {
+            message,
+            gmailStatusCode = status
+        });
+    }
+
     /// <summary>
     /// GET /api/Emails/messages?maxResults=20&q=
     /// Lấy danh sách email của Gmail đã kết nối.
@@ -255,13 +285,9 @@ public sealed class GmailMessagesController : ControllerBase
 
             if (!listResponse.IsSuccessStatusCode)
             {
-                return StatusCode(
-                    (int)listResponse.StatusCode,
-                    new
-                    {
-                        message = "Không thể lấy danh sách email từ Gmail.",
-                        gmailStatusCode = (int)listResponse.StatusCode
-                    });
+                return GmailFailure(
+                    listResponse,
+                    "Không thể lấy danh sách email từ Gmail.");
             }
 
             using var listStream =
@@ -349,7 +375,7 @@ public sealed class GmailMessagesController : ControllerBase
         }
         catch (GmailReconnectRequiredException ex)
         {
-            return Unauthorized(new { message = ex.Message });
+            return ReconnectRequired(ex.Message);
         }
         catch (HttpRequestException)
         {
@@ -422,13 +448,9 @@ public sealed class GmailMessagesController : ControllerBase
 
             if (!response.IsSuccessStatusCode)
             {
-                return StatusCode(
-                    (int)response.StatusCode,
-                    new
-                    {
-                        message = "Không thể lấy nội dung email từ Gmail.",
-                        gmailStatusCode = (int)response.StatusCode
-                    });
+                return GmailFailure(
+                    response,
+                    "Không thể lấy nội dung email từ Gmail.");
             }
 
             using var stream =
@@ -467,7 +489,7 @@ public sealed class GmailMessagesController : ControllerBase
         }
         catch (GmailReconnectRequiredException ex)
         {
-            return Unauthorized(new { message = ex.Message });
+            return ReconnectRequired(ex.Message);
         }
         catch (HttpRequestException)
         {

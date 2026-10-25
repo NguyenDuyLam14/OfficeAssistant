@@ -32,7 +32,7 @@ public sealed class GmailEmailContentExtractor
         var body = bodyBuilder.ToString().Trim();
 
         // Giới hạn kích thước nội dung để tránh gửi email quá dài tới AI.
-        const int maxBodyLength = 12000;
+        const int maxBodyLength = 6000;
 
         if (body.Length > maxBodyLength)
         {

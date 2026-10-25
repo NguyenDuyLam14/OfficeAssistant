@@ -64,6 +64,12 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return axiosError.response?.data?.message ?? fallback;
 }
 
+function isReconnectRequired(error: unknown): boolean {
+  const axiosError = error as AxiosError<{ code?: string }>;
+
+  return axiosError.response?.data?.code === "gmail_reconnect_required";
+}
+
 function getSenderName(from?: string | null): string {
   if (!from) return "Không rõ người gửi";
 
@@ -123,6 +129,8 @@ function formatEmailDate(
 // ============================================================
 
 function Emails() {
+  const [reconnectRequired, setReconnectRequired] = useState(false);
+
   const [gmailStatus, setGmailStatus] = useState<GmailStatus | null>(null);
 
   const [messages, setMessages] = useState<GmailMessage[]>([]);
@@ -213,6 +221,7 @@ function Emails() {
         return current;
       });
     } catch (err) {
+      if (isReconnectRequired(err)) setReconnectRequired(true);
       setMessages([]);
       setNextPageToken(null);
       setError(getErrorMessage(err, "Không thể tải danh sách email."));
@@ -271,6 +280,7 @@ function Emails() {
       setNextPageToken(response.data.nextPageToken ?? null);
       setError("");
     } catch (err) {
+      if (isReconnectRequired(err)) setReconnectRequired(true);
       setError(
         getErrorMessage(err, "Không thể tải thêm email. Vui lòng thử lại."),
       );
@@ -332,6 +342,7 @@ function Emails() {
             setMessages(response.data.messages ?? []);
             setNextPageToken(response.data.nextPageToken ?? null);
           } catch (err) {
+            if (isReconnectRequired(err)) setReconnectRequired(true);
             if (cancelled) return;
 
             setMessages([]);
@@ -416,6 +427,7 @@ function Emails() {
 
       setSelectedMessage(response.data);
     } catch (err) {
+      if (isReconnectRequired(err)) setReconnectRequired(true);
       setDetailError(getErrorMessage(err, "Không thể tải nội dung email."));
     } finally {
       setLoadingDetail(false);
@@ -557,13 +569,24 @@ function Emails() {
         >
           <p>{error}</p>
 
-          <button
-            type="button"
-            onClick={() => void loadGmailStatus()}
-            className="shrink-0 font-semibold underline"
-          >
-            Thử lại
-          </button>
+          {reconnectRequired ? (
+            <button
+              type="button"
+              onClick={() => void handleConnectGmail()}
+              disabled={connecting}
+              className="shrink-0 font-semibold underline disabled:opacity-60"
+            >
+              Kết nối lại Gmail
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void loadGmailStatus()}
+              className="shrink-0 font-semibold underline"
+            >
+              Thử lại
+            </button>
+          )}
         </div>
       )}
 

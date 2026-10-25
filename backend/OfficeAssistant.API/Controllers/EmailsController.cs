@@ -217,6 +217,9 @@ public sealed class EmailsController : ControllerBase
                 connection.UpdatedAtUtc = now;
             }
 
+            // Lưu kết nối Gmail vào SQL Server.
+            await _context.SaveChangesAsync(cancellationToken);
+
             var frontendUrl =
                 _configuration["Frontend:BaseUrl"] ?? "http://localhost:5173";
 

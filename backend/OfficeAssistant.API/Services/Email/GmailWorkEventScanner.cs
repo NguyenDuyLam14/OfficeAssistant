@@ -47,7 +47,7 @@ public sealed class GmailWorkEventScanner
         var messageIds = await _messageReader.GetMessageIdsAsync(
             userId,
             maxResults: 20,
-            query: "newer_than:1d",
+            query: "in:inbox newer_than:1d -category:promotions -category:social",
             cancellationToken: cancellationToken);
 
         var createdCount = 0;

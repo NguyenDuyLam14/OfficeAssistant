@@ -38,7 +38,7 @@ public sealed class OllamaService : IAIService
         CancellationToken cancellationToken = default)
     {
         // Giới hạn nội dung email để tránh xử lý văn bản quá dài.
-        const int maxBodyLength = 12000;
+        const int maxBodyLength = 6000;
 
         emailSubject ??= string.Empty;
         emailSender ??= string.Empty;
@@ -78,7 +78,8 @@ public sealed class OllamaService : IAIService
         5. Chỉ tạo đề xuất để người dùng xem xét, không tự xác nhận.
         6. eventType chỉ được là một trong các giá trị:
            Meeting, Deadline, Appointment, Task, Other.
-        7. startAt và dueAt phải là chuỗi ISO 8601 hoặc chuỗi rỗng.
+        7. startAt và dueAt phải theo định dạng yyyy-MM-ddTHH:mm:ss+07:00
+           hoặc là chuỗi rỗng nếu email không nêu rõ thời điểm.
         8. Sử dụng múi giờ Việt Nam Asia/Ho_Chi_Minh
            khi email thể hiện giờ địa phương tại Việt Nam.
            Khi xác định được giờ địa phương, thêm độ lệch +07:00.
@@ -89,14 +90,15 @@ public sealed class OllamaService : IAIService
         11. Nếu email chỉ thông báo chung chung mà không yêu cầu
             hành động cụ thể, đặt hasEvent = false.
 
-        Trả về đúng JSON theo cấu trúc:
+        Trả về đúng JSON theo cấu trúc (các trường đều là chuỗi,
+        startAt và dueAt để rỗng nếu không có trong email):
         {
           "hasEvent": true,
           "eventType": "Deadline",
           "title": "Tiêu đề công việc",
           "description": "Mô tả công việc",
           "startAt": "",
-          "dueAt": "2026-10-25T17:00:00+07:00"
+          "dueAt": ""
         }
 
         Nếu không có sự kiện phù hợp, trả về:
@@ -133,7 +135,8 @@ public sealed class OllamaService : IAIService
 
             options = new
             {
-                temperature = 0.1
+                temperature = 0.1,
+                num_ctx = 8192
             }
         };
 
