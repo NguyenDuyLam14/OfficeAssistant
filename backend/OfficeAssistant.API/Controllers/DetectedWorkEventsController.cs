@@ -36,6 +36,60 @@ public sealed class DetectedWorkEventsController : ControllerBase
     }
 
     /// <summary>
+    /// GET /api/DetectedWorkEvents/calendar?from=...&to=...
+    /// Lấy các công việc đã xác nhận/hoàn thành trong khoảng thời gian
+    /// để hiển thị lên lịch. Mốc thời gian dùng StartAtUtc, nếu không có thì DueAtUtc.
+    /// </summary>
+    [HttpGet("calendar")]
+    public async Task<IActionResult> GetCalendarEvents(
+        [FromQuery] DateTime from,
+        [FromQuery] DateTime to,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetCurrentUserId(out var userId))
+        {
+            return Unauthorized(new
+            {
+                message = "Không xác định được người dùng đang đăng nhập."
+            });
+        }
+
+        if (to <= from || (to - from).TotalDays > 62)
+        {
+            return BadRequest(new
+            {
+                message = "Khoảng thời gian không hợp lệ (tối đa 62 ngày)."
+            });
+        }
+
+        var fromUtc = from.ToUniversalTime();
+        var toUtc = to.ToUniversalTime();
+
+        var items = await _context.DetectedWorkEvents
+            .AsNoTracking()
+            .Where(x => x.UserId == userId
+                && (x.Status == "Confirmed" || x.Status == "Completed")
+                && (
+                    (x.StartAtUtc != null && x.StartAtUtc >= fromUtc && x.StartAtUtc < toUtc)
+                    || (x.StartAtUtc == null && x.DueAtUtc != null
+                        && x.DueAtUtc >= fromUtc && x.DueAtUtc < toUtc)))
+            .OrderBy(x => x.StartAtUtc ?? x.DueAtUtc)
+            .Select(x => new
+            {
+                id = x.DetectedWorkEventId,
+                title = x.Title,
+                description = x.Description,
+                eventType = x.EventType,
+                startAtUtc = x.StartAtUtc,
+                dueAtUtc = x.DueAtUtc,
+                status = x.Status
+            })
+            .ToListAsync(cancellationToken);
+
+        return Ok(items);
+    }
+
+    /// <summary>
     /// GET /api/DetectedWorkEvents
     /// Lấy danh sách đề xuất công việc, có thể lọc theo trạng thái.
     /// Ví dụ: ?status=PendingReview
