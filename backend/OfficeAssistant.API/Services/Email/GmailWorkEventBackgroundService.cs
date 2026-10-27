@@ -15,7 +15,7 @@ public sealed class GmailWorkEventBackgroundService : BackgroundService
 
     // Chu kỳ quét ban đầu: 5 phút.
     private static readonly TimeSpan ScanInterval =
-        TimeSpan.FromMinutes(5);
+        TimeSpan.FromMinutes(15);
 
     public GmailWorkEventBackgroundService(
         IServiceScopeFactory scopeFactory,

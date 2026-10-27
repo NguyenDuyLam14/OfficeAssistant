@@ -1,35 +1,247 @@
-
+using System.Globalization;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using OfficeAssistant.API.DTOs.Email;
 
 namespace OfficeAssistant.API.Services.AI;
 
-public sealed class OllamaService : IAIService
+/// <summary>
+/// Gọi Gemini API (REST) và triển khai IAIService.
+/// Mọi request đều đi qua GeminiRateLimiter để không vượt quota free tier.
+/// </summary>
+public sealed class GeminiService : IAIService
 {
-    private readonly HttpClient _httpClient;
-    private readonly string _modelName;
+    private const int MaxAttempts = 3;
 
-    public OllamaService(
-        HttpClient httpClient,
+    private readonly HttpClient _http;
+    private readonly GeminiRateLimiter _limiter;
+    private readonly string _model;
+    private readonly string? _apiKey;
+
+    public GeminiService(
+        HttpClient http,
+        GeminiRateLimiter limiter,
         IConfiguration configuration)
     {
-        _httpClient = httpClient;
+        _http = http;
+        _limiter = limiter;
 
-        _httpClient.BaseAddress ??= new Uri(
-            configuration["Ollama:BaseUrl"] ?? "http://localhost:11434/");
+        _http.BaseAddress ??= new Uri(
+            "https://generativelanguage.googleapis.com/");
 
-        // Model local sinh văn bản dài có thể chậm.
-        _httpClient.Timeout = TimeSpan.FromMinutes(5);
+        _http.Timeout = TimeSpan.FromMinutes(2);
 
-        // Đổi model trong appsettings/User Secrets, mặc định qwen3:4b.
-        _modelName = configuration["Ollama:Model"] ?? "qwen3:4b";
+        // Đặt trong User Secrets: dotnet user-secrets set "Gemini:ApiKey" "..."
+        _apiKey = configuration["Gemini:ApiKey"];
+
+        // Kiểm tra model còn dùng được trong Google AI Studio.
+        _model = configuration["Gemini:Model"] ?? "gemini-flash-latest";
+    }
+
+    // =========================================================
+    // HÀM CHUNG GỌI GEMINI
+    // =========================================================
+
+    private async Task<string> GenerateAsync(
+        string prompt,
+        bool jsonMode,
+        object? responseSchema,
+        double temperature,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(_apiKey))
+        {
+            throw new InvalidOperationException(
+                "Thiếu Gemini:ApiKey trong User Secrets.");
+        }
+
+        var generationConfig = new Dictionary<string, object?>
+        {
+            ["temperature"] = temperature
+        };
+
+        if (jsonMode)
+        {
+            generationConfig["responseMimeType"] = "application/json";
+
+            if (responseSchema != null)
+            {
+                generationConfig["responseSchema"] = responseSchema;
+            }
+        }
+
+        var body = new
+        {
+            contents = new[]
+            {
+                new
+                {
+                    role = "user",
+                    parts = new[] { new { text = prompt } }
+                }
+            },
+            generationConfig
+        };
+
+        var url = $"v1beta/models/{_model}:generateContent";
+
+        for (var attempt = 1; ; attempt++)
+        {
+            // Chờ đến lượt; ném GeminiQuotaException nếu đang bị khóa.
+            await _limiter.WaitForTurnAsync(cancellationToken);
+
+            using var request = new HttpRequestMessage(HttpMethod.Post, url)
+            {
+                Content = JsonContent.Create(body)
+            };
+
+            // Gửi key qua header, không đặt trong URL (tránh lộ key vào log).
+            request.Headers.Add("x-goog-api-key", _apiKey);
+
+            using var response = await _http.SendAsync(
+                request, cancellationToken);
+
+            if (response.IsSuccessStatusCode)
+            {
+                return await ReadTextAsync(response, cancellationToken);
+            }
+
+            var error = await response.Content
+                .ReadAsStringAsync(cancellationToken);
+
+            var status = (int)response.StatusCode;
+
+            // ---------- 429: vượt giới hạn ----------
+            if (status == 429)
+            {
+                // Hết quota theo ngày: dừng hẳn đến khi reset.
+                if (error.Contains("PerDay", StringComparison.OrdinalIgnoreCase))
+                {
+                    var until = _limiter.BlockUntilNextQuotaDay();
+
+                    throw new GeminiQuotaException(
+                        "Đã hết quota Gemini trong ngày.", until);
+                }
+
+                var delay = GetRetryDelay(response, error)
+                    ?? TimeSpan.FromSeconds(30 * attempt);
+
+                if (attempt >= MaxAttempts)
+                {
+                    _limiter.Block(delay < TimeSpan.FromMinutes(5)
+                        ? TimeSpan.FromMinutes(5)
+                        : delay);
+
+                    throw new GeminiQuotaException(
+                        "Gemini trả về 429 nhiều lần liên tiếp.",
+                        DateTime.UtcNow + delay);
+                }
+
+                await Task.Delay(delay, cancellationToken);
+                continue;
+            }
+
+            // ---------- 500/503: lỗi tạm thời phía Google ----------
+            if ((status == 500 || status == 503) && attempt < MaxAttempts)
+            {
+                await Task.Delay(
+                    TimeSpan.FromSeconds(5 * attempt), cancellationToken);
+                continue;
+            }
+
+            throw new InvalidOperationException(
+                $"Gemini trả về HTTP {status}: " +
+                (error.Length > 500 ? error[..500] : error));
+        }
+    }
+
+    private static async Task<string> ReadTextAsync(
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
+    {
+        using var json = await response.Content
+            .ReadFromJsonAsync<JsonDocument>(
+                cancellationToken: cancellationToken);
+
+        if (json == null ||
+            !json.RootElement.TryGetProperty("candidates", out var candidates) ||
+            candidates.ValueKind != JsonValueKind.Array ||
+            candidates.GetArrayLength() == 0)
+        {
+            throw new InvalidOperationException(
+                "Gemini không trả về kết quả (có thể bị chặn bởi bộ lọc an toàn).");
+        }
+
+        var sb = new StringBuilder();
+
+        if (candidates[0].TryGetProperty("content", out var content) &&
+            content.TryGetProperty("parts", out var parts) &&
+            parts.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var part in parts.EnumerateArray())
+            {
+                // Bỏ qua phần "thought" nếu model có trả về.
+                if (part.TryGetProperty("thought", out var thought) &&
+                    thought.ValueKind == JsonValueKind.True)
+                {
+                    continue;
+                }
+
+                if (part.TryGetProperty("text", out var text) &&
+                    text.ValueKind == JsonValueKind.String)
+                {
+                    sb.Append(text.GetString());
+                }
+            }
+        }
+
+        var result = sb.ToString().Trim();
+
+        if (string.IsNullOrWhiteSpace(result))
+        {
+            throw new InvalidOperationException(
+                "Gemini trả về nội dung rỗng.");
+        }
+
+        return result;
     }
 
     /// <summary>
-    /// Gửi nội dung email đến Qwen3 và nhận kết quả phân tích công việc.
-    /// Trả về null nếu email không chứa công việc phù hợp.
+    /// Đọc thời gian chờ Google yêu cầu: header Retry-After
+    /// hoặc trường "retryDelay": "23s" trong body lỗi.
     /// </summary>
+    private static TimeSpan? GetRetryDelay(
+        HttpResponseMessage response,
+        string errorBody)
+    {
+        if (response.Headers.RetryAfter?.Delta is { } delta)
+        {
+            return delta + TimeSpan.FromSeconds(1);
+        }
+
+        var match = Regex.Match(
+            errorBody,
+            "\"retryDelay\"\\s*:\\s*\"(\\d+(?:\\.\\d+)?)s\"");
+
+        if (match.Success &&
+            double.TryParse(
+                match.Groups[1].Value,
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out var seconds))
+        {
+            return TimeSpan.FromSeconds(seconds + 1);
+        }
+
+        return null;
+    }
+
+    // =========================================================
+    // 1. PHÂN TÍCH EMAIL -> SỰ KIỆN CÔNG VIỆC
+    // =========================================================
+
     public async Task<WorkEventExtractionResult?> AnalyzeWorkEventAsync(
         string emailSubject,
         string emailSender,
@@ -37,7 +249,6 @@ public sealed class OllamaService : IAIService
         string emailBody,
         CancellationToken cancellationToken = default)
     {
-        // Giới hạn nội dung email để tránh xử lý văn bản quá dài.
         const int maxBodyLength = 6000;
 
         emailSubject ??= string.Empty;
@@ -50,8 +261,6 @@ public sealed class OllamaService : IAIService
             emailBody = emailBody[..maxBodyLength];
         }
 
-        // Yêu cầu mô hình chỉ trích xuất dữ liệu, không làm theo
-        // các chỉ dẫn có thể xuất hiện bên trong nội dung email.
         var prompt = $$"""
         Bạn là trợ lý phân tích email nghiệp vụ văn phòng.
 
@@ -90,91 +299,33 @@ public sealed class OllamaService : IAIService
         11. Nếu email chỉ thông báo chung chung mà không yêu cầu
             hành động cụ thể, đặt hasEvent = false.
 
-        Trả về đúng JSON theo cấu trúc (các trường đều là chuỗi,
-        startAt và dueAt để rỗng nếu không có trong email):
-        {
-          "hasEvent": true,
-          "eventType": "Deadline",
-          "title": "Tiêu đề công việc",
-          "description": "Mô tả công việc",
-          "startAt": "",
-          "dueAt": ""
-        }
-
-        Nếu không có sự kiện phù hợp, trả về:
-        {
-          "hasEvent": false,
-          "eventType": "Other",
-          "title": "",
-          "description": "",
-          "startAt": "",
-          "dueAt": ""
-        }
+        Trả về JSON gồm các trường: hasEvent, eventType, title,
+        description, startAt, dueAt (startAt và dueAt để chuỗi rỗng
+        nếu không có trong email).
         """;
 
-        // Gửi yêu cầu đến Ollama Chat API.
-        var requestBody = new
+        var schema = new
         {
-            model = _modelName,
-            messages = new[]
+            type = "OBJECT",
+            properties = new
             {
-                new
-                {
-                    role = "user",
-                    content = prompt
-                }
+                hasEvent = new { type = "BOOLEAN" },
+                eventType = new { type = "STRING" },
+                title = new { type = "STRING" },
+                description = new { type = "STRING" },
+                startAt = new { type = "STRING" },
+                dueAt = new { type = "STRING" }
             },
-            stream = false,
-
-            // Buộc mô hình trả về dữ liệu JSON.
-            format = "json",
-
-            // Qwen3 có thể tạo phần suy luận dài.
-            // Tắt phần này để ưu tiên kết quả JSON ngắn gọn.
-            think = false,
-
-            options = new
+            required = new[]
             {
-                temperature = 0.1,
-                num_ctx = 8192
+                "hasEvent", "eventType", "title",
+                "description", "startAt", "dueAt"
             }
         };
 
-        using var response = await _httpClient.PostAsJsonAsync(
-            "api/chat",
-            requestBody,
-            cancellationToken);
+        var json = await GenerateAsync(
+            prompt, true, schema, 0.1, cancellationToken);
 
-        // Nếu Ollama trả về lỗi HTTP, ném ngoại lệ để ghi nhận lỗi.
-        response.EnsureSuccessStatusCode();
-
-        using var responseJson = await response.Content.ReadFromJsonAsync
-            <JsonDocument>(cancellationToken: cancellationToken);
-
-        if (responseJson is null)
-        {
-            throw new InvalidOperationException(
-                "Ollama không trả về dữ liệu.");
-        }
-
-        // Lấy nội dung do mô hình sinh ra từ response.message.content.
-        if (!responseJson.RootElement.TryGetProperty(
-                "message", out var message)
-            || !message.TryGetProperty("content", out var contentElement))
-        {
-            throw new InvalidOperationException(
-                "Phản hồi Ollama không có trường message.content.");
-        }
-
-        var json = contentElement.GetString();
-
-        if (string.IsNullOrWhiteSpace(json))
-        {
-            throw new InvalidOperationException(
-                "Ollama trả về nội dung rỗng.");
-        }
-
-        // Chuyển JSON thành DTO dùng chung với chức năng hiện tại.
         WorkEventExtractionResult? result;
 
         try
@@ -189,31 +340,16 @@ public sealed class OllamaService : IAIService
         catch (JsonException ex)
         {
             throw new InvalidOperationException(
-                "Ollama trả về JSON sự kiện không hợp lệ.", ex);
+                "Gemini trả về JSON sự kiện không hợp lệ.", ex);
         }
 
-        if (result is null)
-        {
-            throw new InvalidOperationException(
-                "Không thể đọc kết quả phân tích email từ Ollama.");
-        }
-
-        // Không tạo sự kiện nếu mô hình xác định email không phù hợp.
-        if (!result.HasEvent)
+        if (result is null || !result.HasEvent)
         {
             return null;
         }
 
-        // Chỉ chấp nhận các loại sự kiện được hệ thống hỗ trợ.
         var allowedTypes = new HashSet<string>(
-            new[]
-            {
-                "Meeting",
-                "Deadline",
-                "Appointment",
-                "Task",
-                "Other"
-            },
+            new[] { "Meeting", "Deadline", "Appointment", "Task", "Other" },
             StringComparer.OrdinalIgnoreCase);
 
         if (!allowedTypes.Contains(result.EventType))
@@ -221,92 +357,14 @@ public sealed class OllamaService : IAIService
             result.EventType = "Other";
         }
 
-        // Chuẩn hóa tiêu đề và mô tả.
         result.Title = result.Title?.Trim() ?? string.Empty;
         result.Description = result.Description?.Trim() ?? string.Empty;
 
-        // Không lưu sự kiện nếu thiếu tiêu đề.
-        if (string.IsNullOrWhiteSpace(result.Title))
-        {
-            return null;
-        }
-
-        return result;
+        return string.IsNullOrWhiteSpace(result.Title) ? null : result;
     }
 
     // =========================================================
-    // HÀM CHUNG GỌI OLLAMA CHAT API
-    // =========================================================
-
-    /// <param name="format">
-    /// null = trả text thường; "json" hoặc JSON Schema = structured output.
-    /// </param>
-    private async Task<string> ChatAsync(
-        string prompt,
-        object? format,
-        double temperature,
-        CancellationToken cancellationToken = default)
-    {
-        var requestBody = new Dictionary<string, object?>
-        {
-            ["model"] = _modelName,
-            ["messages"] = new[]
-            {
-                new { role = "user", content = prompt }
-            },
-            ["stream"] = false,
-            ["think"] = false, // Tắt phần suy luận của Qwen3
-            ["options"] = new
-            {
-                temperature,
-                // Mặc định Ollama chỉ dùng context 2048 token,
-                // template Word dài sẽ bị cắt nếu không tăng.
-                num_ctx = 8192
-            }
-        };
-
-        if (format != null)
-        {
-            requestBody["format"] = format;
-        }
-
-        using var response = await _httpClient.PostAsJsonAsync(
-            "api/chat", requestBody, cancellationToken);
-
-        if (!response.IsSuccessStatusCode)
-        {
-            var error = await response.Content
-                .ReadAsStringAsync(cancellationToken);
-
-            throw new InvalidOperationException(
-                $"Ollama trả về HTTP {(int)response.StatusCode}: {error}");
-        }
-
-        using var json = await response.Content
-            .ReadFromJsonAsync<JsonDocument>(
-                cancellationToken: cancellationToken);
-
-        if (json == null ||
-            !json.RootElement.TryGetProperty("message", out var message) ||
-            !message.TryGetProperty("content", out var content))
-        {
-            throw new InvalidOperationException(
-                "Phản hồi Ollama không có message.content.");
-        }
-
-        var text = content.GetString();
-
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            throw new InvalidOperationException(
-                "Ollama trả về nội dung rỗng.");
-        }
-
-        return text.Trim();
-    }
-
-    // =========================================================
-    // 1. SOẠN VĂN BẢN THƯỜNG
+    // 2. SOẠN VĂN BẢN THƯỜNG
     // =========================================================
 
     public async Task<string> GenerateDocumentAsync(
@@ -332,11 +390,11 @@ public sealed class OllamaService : IAIService
             {userPrompt}
             """;
 
-        return await ChatAsync(prompt, null, 0.3);
+        return await GenerateAsync(prompt, false, null, 0.3);
     }
 
     // =========================================================
-    // 2. ĐIỀN PLACEHOLDER [ABC] / {{ABC}}
+    // 3. ĐIỀN PLACEHOLDER [ABC] / {{ABC}}
     // =========================================================
 
     public async Task<Dictionary<string, string>>
@@ -378,7 +436,7 @@ public sealed class OllamaService : IAIService
     }
 
     // =========================================================
-    // 3. ĐIỀN TEMPLATE WORD TỰ NHIÊN ([F001], [F002]...)
+    // 4. ĐIỀN TEMPLATE WORD TỰ NHIÊN ([F001], [F002]...)
     // =========================================================
 
     public async Task<Dictionary<string, string>>
@@ -440,7 +498,7 @@ public sealed class OllamaService : IAIService
     }
 
     // =========================================================
-    // HÀM DÙNG CHUNG: structured output + kiểm tra kết quả
+    // HÀM DÙNG CHUNG: JSON mode + kiểm tra kết quả
     // =========================================================
 
     private async Task<Dictionary<string, string>> GenerateFieldsAsync(
@@ -448,44 +506,28 @@ public sealed class OllamaService : IAIService
         List<string> keys,
         double temperature)
     {
-        // JSON Schema ép model trả đúng các key yêu cầu.
-        var properties = new Dictionary<string, object>();
-
-        foreach (var key in keys)
-        {
-            properties[key] = new { type = "string" };
-        }
-
-        var schema = new
-        {
-            type = "object",
-            properties,
-            required = keys
-        };
-
-        var text = await ChatAsync(prompt, schema, temperature);
+        // Không dùng responseSchema vì key dạng "[F001]" có ký tự đặc biệt;
+        // JSON mode + bước làm sạch bên dưới là đủ an toàn.
+        var text = await GenerateAsync(prompt, true, null, temperature);
 
         Dictionary<string, string>? result;
 
         try
         {
-            result = JsonSerializer.Deserialize<Dictionary<string, string>>(
-                text);
+            result = JsonSerializer.Deserialize<Dictionary<string, string>>(text);
         }
         catch (JsonException ex)
         {
             throw new InvalidOperationException(
-                "Ollama trả về JSON không hợp lệ.", ex);
+                "Gemini trả về JSON không hợp lệ.", ex);
         }
 
         if (result == null)
         {
             throw new InvalidOperationException(
-                "Không thể chuyển kết quả Ollama thành Dictionary.");
+                "Không thể chuyển kết quả Gemini thành Dictionary.");
         }
 
-        // Model nhỏ có thể thiếu key: điền chuỗi rỗng thay vì làm hỏng
-        // cả quá trình tạo file Word.
         var cleaned = new Dictionary<string, string>();
 
         foreach (var key in keys)

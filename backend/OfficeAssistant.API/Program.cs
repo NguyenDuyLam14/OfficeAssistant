@@ -35,13 +35,11 @@ builder.Services.AddCors(options =>
 // ============================================================
 // ĐĂNG KÝ CONTROLLER
 // ============================================================
-// Cho phép ASP.NET Core phát hiện và xử lý các API Controller.
 builder.Services.AddControllers();
 
 // ============================================================
 // ĐĂNG KÝ ENTITY FRAMEWORK CORE
 // ============================================================
-// Sử dụng SQL Server làm cơ sở dữ liệu.
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(
         builder.Configuration.GetConnectionString("DefaultConnection")
@@ -51,8 +49,6 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 // ============================================================
 // CẤU HÌNH JWT SETTINGS
 // ============================================================
-// Đọc phần "JwtSettings" trong appsettings.json
-// và đưa vào đối tượng JwtSettings.
 builder.Services.Configure<JwtSettings>(
     builder.Configuration.GetSection("JwtSettings")
 );
@@ -60,22 +56,26 @@ builder.Services.Configure<JwtSettings>(
 // ============================================================
 // ĐĂNG KÝ JWT SERVICE
 // ============================================================
-// Cho phép AuthController sử dụng JwtService thông qua
-// Dependency Injection.
-//
-// AddScoped:
-// Mỗi HTTP request sẽ sử dụng một instance của JwtService.
 builder.Services.AddScoped<JwtService>();
 
-// Đăng ký AI Service để Controller có thể sử dụng.
+// ============================================================
+// ĐĂNG KÝ AI SERVICE (Gemini)
+// ============================================================
+//
+// GeminiRateLimiter là SINGLETON để mọi lời gọi Gemini
+// (background scanner + người dùng soạn văn bản)
+// dùng chung một bộ đếm tốc độ và quota.
+// ============================================================
+
 builder.Services.AddHttpClient();
 
-// Dùng Ollama cho toàn bộ chức năng AI.
-builder.Services.AddHttpClient<OllamaService>();
+builder.Services.AddSingleton<GeminiRateLimiter>();
+
+builder.Services.AddHttpClient<GeminiService>();
 
 builder.Services.AddScoped<IAIService>(
     serviceProvider =>
-        serviceProvider.GetRequiredService<OllamaService>());
+        serviceProvider.GetRequiredService<GeminiService>());
 
 // Service xử lý file Word bằng OpenXML.
 builder.Services.AddScoped<WordTemplateService>();
@@ -120,11 +120,9 @@ var key = Encoding.UTF8.GetBytes(jwtSettings.SecretKey);
 builder.Services
     .AddAuthentication(options =>
     {
-        // Xác định JWT Bearer là phương thức xác thực mặc định.
         options.DefaultAuthenticateScheme =
             JwtBearerDefaults.AuthenticationScheme;
 
-        // Xác định JWT Bearer là phương thức challenge mặc định.
         options.DefaultChallengeScheme =
             JwtBearerDefaults.AuthenticationScheme;
     })
@@ -133,23 +131,18 @@ builder.Services
         options.TokenValidationParameters =
             new TokenValidationParameters
             {
-                // Kiểm tra JWT có đúng Issuer hay không.
                 ValidateIssuer = true,
                 ValidIssuer = jwtSettings.Issuer,
 
-                // Kiểm tra JWT có đúng Audience hay không.
                 ValidateAudience = true,
                 ValidAudience = jwtSettings.Audience,
 
-                // Kiểm tra thời hạn token.
                 ValidateLifetime = true,
 
-                // Kiểm tra chữ ký token.
                 ValidateIssuerSigningKey = true,
                 IssuerSigningKey =
                     new SymmetricSecurityKey(key),
 
-                // Không cho phép token hết hạn vượt quá thời gian.
                 ClockSkew = TimeSpan.Zero
             };
     });
@@ -157,7 +150,6 @@ builder.Services
 // ============================================================
 // CẤU HÌNH AUTHORIZATION
 // ============================================================
-// Cho phép sử dụng [Authorize] trên Controller/API.
 builder.Services.AddAuthorization();
 
 // ============================================================
@@ -181,15 +173,13 @@ if (app.Environment.IsDevelopment())
 // ============================================================
 // HTTPS
 // ============================================================
-// Giữ cấu hình hiện tại cho môi trường phát triển.
 app.UseHttpsRedirection();
 
 // ============================================================
 // CORS
 // ============================================================
 //
-// Phải đặt trước Authentication/Authorization
-// để request từ React được phép truy cập API.
+// Phải đặt trước Authentication/Authorization.
 // ============================================================
 
 app.UseCors("FrontendPolicy");

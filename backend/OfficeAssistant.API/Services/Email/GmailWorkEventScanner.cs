@@ -1,4 +1,3 @@
-
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using OfficeAssistant.API.Data;
@@ -8,33 +7,40 @@ using OfficeAssistant.API.Services.AI;
 namespace OfficeAssistant.API.Services.Email;
 
 /// <summary>
-/// Quét email Gmail, dùng Ollama phát hiện công việc,
+/// Quét email Gmail, dùng AI (Gemini/Ollama) phát hiện công việc,
 /// lưu đề xuất vào SQL Server và tạo thông báo trong ứng dụng.
 /// </summary>
 public sealed class GmailWorkEventScanner
 {
+    // Số lần gọi AI tối đa cho MỖI lượt quét của MỘT người dùng.
+    // Email chưa kịp xử lý sẽ được quét ở lượt sau.
+    private const int MaxAiCallsPerScan = 5;
+
     private readonly ApplicationDbContext _db;
     private readonly GmailMessageReader _messageReader;
-    private readonly OllamaService _ollamaService;
 
-    /// <summary>
-    /// Quét các email gần đây của một người dùng.
-    /// Trả về số đề xuất công việc mới được lưu.
-    /// </summary>
+    // Trước đây là OllamaService; giờ dùng interface
+    // để chạy được với cả Gemini lẫn Ollama.
+    private readonly IAIService _aiService;
+
     private readonly ILogger<GmailWorkEventScanner> _logger;
 
     public GmailWorkEventScanner(
         ApplicationDbContext db,
         GmailMessageReader messageReader,
-        OllamaService ollamaService,
+        IAIService aiService,
         ILogger<GmailWorkEventScanner> logger)
     {
         _db = db;
         _messageReader = messageReader;
-        _ollamaService = ollamaService;
+        _aiService = aiService;
         _logger = logger;
     }
 
+    /// <summary>
+    /// Quét các email gần đây của một người dùng.
+    /// Trả về số đề xuất công việc mới được lưu.
+    /// </summary>
     public async Task<int> ScanUserEmailsAsync(
         int userId,
         CancellationToken cancellationToken = default)
@@ -51,6 +57,9 @@ public sealed class GmailWorkEventScanner
             cancellationToken: cancellationToken);
 
         var createdCount = 0;
+
+        // Đếm số lần đã gọi AI trong lượt quét này.
+        var aiCalls = 0;
 
         foreach (var messageId in messageIds)
         {
@@ -87,7 +96,31 @@ public sealed class GmailWorkEventScanner
                     continue;
                 }
 
-                var result = await _ollamaService.AnalyzeWorkEventAsync(
+                // BƯỚC MỚI 1: lọc sơ bộ bằng từ khóa (không tốn quota AI).
+                // Email không có dấu hiệu liên quan lịch/công việc
+                // thì đánh dấu đã xử lý và bỏ qua.
+                if (!EmailWorkPrefilter.LooksRelevant(email))
+                {
+                    await MarkProcessedAsync(userId, messageId, cancellationToken);
+                    continue;
+                }
+
+                // BƯỚC MỚI 2: giới hạn số lần gọi AI mỗi lượt quét.
+                // KHÔNG đánh dấu đã xử lý để lượt sau xử lý tiếp.
+                if (aiCalls >= MaxAiCallsPerScan)
+                {
+                    _logger.LogInformation(
+                        "Đạt giới hạn {Max} lần gọi AI cho UserId {UserId}; " +
+                        "phần email còn lại sẽ được xử lý ở lượt quét sau.",
+                        MaxAiCallsPerScan,
+                        userId);
+
+                    break;
+                }
+
+                aiCalls++;
+
+                var result = await _aiService.AnalyzeWorkEventAsync(
                     email.Subject ?? string.Empty,
                     email.Sender ?? string.Empty,
                     email.Date ?? string.Empty,
@@ -147,6 +180,19 @@ public sealed class GmailWorkEventScanner
             {
                 throw;
             }
+            // BƯỚC MỚI 3: hết quota Gemini thì dừng cả lượt quét.
+            // Phải đặt TRƯỚC catch (Exception) bên dưới.
+            // Email này chưa được đánh dấu đã xử lý nên sẽ thử lại sau.
+            catch (GeminiQuotaException ex)
+            {
+                _logger.LogWarning(
+                    "Hết quota Gemini, dừng quét cho UserId {UserId}. " +
+                    "Thử lại sau {RetryAfterUtc:u}.",
+                    userId,
+                    ex.RetryAfterUtc);
+
+                break;
+            }
             catch (Exception ex)
             {
                 _logger.LogWarning(
@@ -158,8 +204,7 @@ public sealed class GmailWorkEventScanner
                 // Xóa entity bị lỗi để không làm hỏng các lần SaveChanges sau.
                 _db.ChangeTracker.Clear();
 
-                // Cố ý KHÔNG đánh dấu đã xử lý: lần quét sau sẽ thử lại
-                // (ví dụ khi Ollama tạm thời chưa chạy).
+                // Cố ý KHÔNG đánh dấu đã xử lý: lần quét sau sẽ thử lại.
                 continue;
             }
         }
@@ -187,7 +232,6 @@ public sealed class GmailWorkEventScanner
     /// </summary>
     private static DateTime? ParseUtc(string? value)
     {
-        // Không có dữ liệu thời gian thì không thể chuyển đổi.
         if (string.IsNullOrWhiteSpace(value))
         {
             return null;
@@ -195,7 +239,6 @@ public sealed class GmailWorkEventScanner
 
         value = value.Trim();
 
-        // Kiểm tra chuỗi có múi giờ rõ ràng hay không.
         bool hasExplicitTimeZone =
             value.EndsWith("Z", StringComparison.OrdinalIgnoreCase)
             || (
@@ -208,9 +251,6 @@ public sealed class GmailWorkEventScanner
                 && char.IsDigit(value[^1])
             );
 
-        // Trường hợp thời gian đã có múi giờ, ví dụ:
-        // 2026-10-25T17:00:00+07:00
-        // 2026-10-25T10:00:00Z
         if (hasExplicitTimeZone)
         {
             if (DateTimeOffset.TryParse(
@@ -225,9 +265,6 @@ public sealed class GmailWorkEventScanner
             return null;
         }
 
-        // Trường hợp không có múi giờ, ví dụ:
-        // 2026-10-25T17:00:00
-        // Mặc định giờ trên là giờ Việt Nam (UTC+7).
         if (DateTime.TryParse(
             value,
             CultureInfo.InvariantCulture,
@@ -243,7 +280,6 @@ public sealed class GmailWorkEventScanner
             return vietnamTime.UtcDateTime;
         }
 
-        // Chuỗi không hợp lệ thì bỏ qua thời gian này.
         return null;
     }
 }

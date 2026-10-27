@@ -1,10 +1,17 @@
 namespace OfficeAssistant.API.Services.AI;
 
+using OfficeAssistant.API.DTOs.Email;
+
 /// <summary>
 /// Interface xử lý các chức năng AI.
 /// </summary>
 public interface IAIService
 {
+    Task<WorkEventExtractionResult?> AnalyzeWorkEventAsync(
+        string emailSubject, string emailSender,
+        string emailDate, string emailBody,
+        CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Tạo nội dung văn bản thông thường.
     /// </summary>
