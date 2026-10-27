@@ -16,6 +16,67 @@ namespace OfficeAssistant.API.Services.Word;
 public class WordTemplateService
 {
     /// <summary>
+    /// Lấy danh sách vùng cần điền kèm câu chứa nó
+    /// để hiển thị thành ô nhập trên giao diện.
+    /// </summary>
+    public List<TemplateFieldInfo> GetTemplateFields(string sourceTemplatePath)
+    {
+        var tempPath = Path.Combine(
+            Path.GetTempPath(), $"fields_{Guid.NewGuid():N}.docx");
+
+        try
+        {
+            var analysis = PrepareNaturalTemplateForAI(
+                sourceTemplatePath, tempPath);
+
+            var lines = analysis.TemplateText
+                .Split(new[] { '\r', '\n' },
+                    StringSplitOptions.RemoveEmptyEntries);
+
+            var result = new List<TemplateFieldInfo>();
+
+            foreach (var field in analysis.Fields)
+            {
+                var line = lines.FirstOrDefault(
+                    l => l.Contains(field.FieldId)) ?? string.Empty;
+
+                // Trường hiện tại -> [ ___ ], các trường khác -> …
+                var context = line.Replace(field.FieldId, "[ ___ ]");
+                context = Regex.Replace(context, @"\[F\d{3}\]", "…");
+
+                if (context.Length > 200)
+                {
+                    context = context[..200] + "…";
+                }
+
+                result.Add(new TemplateFieldInfo
+                {
+                    FieldId = field.FieldId,
+                    OriginalText = field.OriginalText,
+                    Context = context.Trim()
+                });
+            }
+
+            return result;
+        }
+        finally
+        {
+            if (File.Exists(tempPath))
+            {
+                try { File.Delete(tempPath); } catch { }
+            }
+        }
+    }
+
+    public class TemplateFieldInfo
+    {
+        public string FieldId { get; set; } = string.Empty;
+        public string OriginalText { get; set; } = string.Empty;
+        public string Context { get; set; } = string.Empty;
+    }
+
+
+    /// <summary>
     /// Đọc file Word template và tìm tất cả placeholder
     /// có dạng [TEN_PLACEHOLDER].
     /// </summary>

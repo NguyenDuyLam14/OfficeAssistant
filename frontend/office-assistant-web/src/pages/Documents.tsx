@@ -57,6 +57,12 @@ type DocumentForm = {
   content: string;
 };
 
+type TemplateFieldInfo = {
+  fieldId: string;
+  originalText: string;
+  context: string;
+};
+
 const documentTypes = [
   "Thông báo",
   "Công văn",
@@ -142,6 +148,54 @@ function Documents() {
   // Lỗi riêng của chức năng xuất Word.
   const [wordError, setWordError] = useState("");
 
+  // Danh sách trường của mẫu đang chọn.
+  const [templateFields, setTemplateFields] = useState<TemplateFieldInfo[]>([]);
+
+  // Giá trị người dùng nhập: key = "[F001]", value = nội dung.
+  const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
+
+  // Đang tải danh sách trường.
+  const [fieldsLoading, setFieldsLoading] = useState(false);
+
+  // Chỉ giữ những trường người dùng thực sự đã nhập.
+  const filledFieldValues = Object.fromEntries(
+    Object.entries(fieldValues).filter(([, value]) => value.trim()),
+  );
+
+  // Có nhập ít nhất một trường hay không.
+  const hasFieldValues = Object.keys(filledFieldValues).length > 0;
+
+  // Xóa danh sách trường và giá trị đã nhập.
+  const clearTemplateFields = () => {
+    setTemplateFields([]);
+    setFieldValues({});
+  };
+
+  // Khi người dùng chọn mẫu: lưu ID rồi tải các trường của mẫu.
+  const handleSelectTemplate = async (value: string) => {
+    const id = value ? Number(value) : null;
+
+    setAiTemplateId(id);
+    clearTemplateFields();
+
+    if (id === null) return;
+
+    try {
+      setFieldsLoading(true);
+
+      const response = await api.get<TemplateFieldInfo[]>(
+        `/Word/template-fields/${id}`,
+      );
+
+      setTemplateFields(response.data);
+    } catch (error) {
+      console.error("Không thể tải các trường của mẫu:", error);
+      // Không chặn người dùng: vẫn có thể để AI tự điền hết.
+    } finally {
+      setFieldsLoading(false);
+    }
+  };
+
   /**
    * Gọi API backend để AI sinh nội dung văn bản.
    *
@@ -162,8 +216,8 @@ function Documents() {
    */
   const handleGenerateAI = async () => {
     // Kiểm tra yêu cầu của người dùng.
-    if (!aiPrompt.trim()) {
-      setAiError("Vui lòng nhập yêu cầu cần AI soạn thảo.");
+    if (!aiPrompt.trim() && !hasFieldValues) {
+      setWordError("Vui lòng nhập yêu cầu hoặc điền ít nhất một trường.");
 
       return;
     }
@@ -276,10 +330,9 @@ function Documents() {
         "/Word/generate-from-ai",
         {
           documentTemplateId: aiTemplateId,
-
           documentType: aiDocumentType,
-
           userPrompt: aiPrompt.trim(),
+          fieldValues: filledFieldValues, // thêm
         },
         {
           responseType: "blob",
@@ -739,6 +792,7 @@ function Documents() {
                   if (!selectedTemplate) {
                     // Template không còn tồn tại.
                     setAiTemplateId(null);
+                    clearTemplateFields();
                   } else if (newDocumentType === "Khác") {
                     // Với "Khác", chỉ chấp nhận template
                     // không thuộc các loại chính.
@@ -748,12 +802,14 @@ function Documents() {
 
                     if (!isOtherTemplate) {
                       setAiTemplateId(null);
+                      clearTemplateFields();
                     }
                   } else if (
                     selectedTemplate.documentType !== newDocumentType
                   ) {
                     // Template hiện tại không thuộc loại mới.
                     setAiTemplateId(null);
+                    clearTemplateFields();
                   }
                 }
               }}
@@ -780,11 +836,9 @@ function Documents() {
             <select
               id="ai-template-id"
               value={aiTemplateId === null ? "" : aiTemplateId}
-              onChange={(event) => {
-                const value = event.target.value;
-
-                setAiTemplateId(value ? Number(value) : null);
-              }}
+              onChange={(event) =>
+                void handleSelectTemplate(event.target.value)
+              }
               disabled={isGeneratingAI || templatesLoading}
               className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
             >
@@ -807,6 +861,63 @@ function Documents() {
             </select>
           </div>
         </div>
+
+        {/* Các trường trong mẫu Word */}
+        {aiTemplateId !== null && (
+          <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <h3 className="text-sm font-semibold text-slate-800">
+              Thông tin các trường trong mẫu
+            </h3>
+
+            <p className="mt-1 text-xs text-slate-500">
+              Trường nào để trống, AI sẽ tự điền dựa trên yêu cầu soạn thảo bên
+              dưới.
+            </p>
+
+            {fieldsLoading ? (
+              <p className="mt-3 text-sm text-slate-500">
+                Đang đọc mẫu Word...
+              </p>
+            ) : templateFields.length === 0 ? (
+              <p className="mt-3 text-sm text-slate-500">
+                Mẫu này không có vùng nào cần điền.
+              </p>
+            ) : (
+              <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                {templateFields.map((field, index) => (
+                  <div key={field.fieldId}>
+                    <label
+                      htmlFor={`field-${field.fieldId}`}
+                      className="mb-1 block text-xs font-medium text-slate-600"
+                    >
+                      Trường {index + 1}
+                    </label>
+
+                    {/* Câu chứa trường để người dùng biết cần nhập gì */}
+                    <p className="mb-1 text-xs italic text-slate-400">
+                      {field.context}
+                    </p>
+
+                    <input
+                      id={`field-${field.fieldId}`}
+                      type="text"
+                      value={fieldValues[field.fieldId] ?? ""}
+                      onChange={(event) =>
+                        setFieldValues((current) => ({
+                          ...current,
+                          [field.fieldId]: event.target.value,
+                        }))
+                      }
+                      disabled={isGeneratingWord}
+                      placeholder="Để trống để AI điền"
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Yêu cầu cho AI */}
         <div className="mt-4">
@@ -864,7 +975,7 @@ function Documents() {
               isGeneratingAI ||
               isGeneratingWord ||
               aiTemplateId === null ||
-              !aiPrompt.trim()
+              (!aiPrompt.trim() && !hasFieldValues)
             }
             className="rounded-xl bg-green-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
           >

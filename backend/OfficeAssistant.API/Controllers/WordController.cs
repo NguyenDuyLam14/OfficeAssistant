@@ -33,6 +33,41 @@ public class WordController : ControllerBase
     }
 
     /// <summary>
+    /// GET api/Word/template-fields/{templateId}
+    /// </summary>
+    [HttpGet("template-fields/{templateId:int}")]
+    public async Task<IActionResult> GetTemplateFields(int templateId)
+    {
+        var template = await _context.DocumentTemplates
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x =>
+                x.DocumentTemplateId == templateId && x.IsActive);
+
+        if (template == null || string.IsNullOrWhiteSpace(template.FilePath))
+        {
+            return NotFound(new
+            {
+                message = "Mẫu không tồn tại hoặc chưa có file Word."
+            });
+        }
+
+        var path = Path.Combine(
+            _environment.ContentRootPath,
+            template.FilePath.Replace("/",
+                Path.DirectorySeparatorChar.ToString()));
+
+        if (!System.IO.File.Exists(path))
+        {
+            return NotFound(new
+            {
+                message = "File Word của mẫu không tồn tại."
+            });
+        }
+
+        return Ok(_wordTemplateService.GetTemplateFields(path));
+    }
+
+    /// <summary>
     /// Sinh file Word mới từ mẫu văn bản đã upload.
     /// </summary>
     [HttpPost("generate")]
@@ -256,12 +291,15 @@ public class WordController : ControllerBase
         // 2. KIỂM TRA USER PROMPT
         // =====================================================
 
-        if (string.IsNullOrWhiteSpace(request.UserPrompt))
+        var userValues = (request.FieldValues ?? new())
+            .Where(x => !string.IsNullOrWhiteSpace(x.Value))
+            .ToDictionary(x => x.Key, x => x.Value.Trim());
+
+        if (string.IsNullOrWhiteSpace(request.UserPrompt) && userValues.Count == 0)
         {
             return BadRequest(new
             {
-                message =
-                    "Yêu cầu soạn thảo không được để trống."
+                message = "Vui lòng nhập yêu cầu hoặc điền ít nhất một trường."
             });
         }
 
@@ -380,14 +418,40 @@ public class WordController : ControllerBase
             // 9. GỌI AI
             // =================================================
 
-            var replacements =
-                await _aiService.GenerateNaturalTemplateFieldsAsync(
+            // Chỉ nhận giá trị cho field có thật trong mẫu.
+            userValues = userValues
+                .Where(x => fieldIds.Contains(x.Key))
+                .ToDictionary(x => x.Key, x => x.Value);
+
+            var missingIds = fieldIds
+                .Where(id => !userValues.ContainsKey(id))
+                .ToList();
+
+            var replacements = new Dictionary<string, string>(userValues);
+
+            if (missingIds.Count > 0)
+            {
+                // Cho AI biết các giá trị đã có để nội dung nhất quán.
+                var known = string.Join("\n",
+                    userValues.Select(x => $"{x.Key} = {x.Value}"));
+
+                var prompt = string.IsNullOrWhiteSpace(known)
+                    ? request.UserPrompt
+                    : $"{request.UserPrompt}\n\nCác field người dùng đã tự nhập " +
+                      $"(không cần điền lại, hãy dùng làm ngữ cảnh):\n{known}";
+
+                var aiValues = await _aiService.GenerateNaturalTemplateFieldsAsync(
                     request.DocumentType,
                     template.TemplateName,
-                    request.UserPrompt,
+                    prompt,
                     analyzedTemplate.TemplateText,
-                    fieldIds
-                );
+                    missingIds);
+
+                foreach (var item in aiValues)
+                {
+                    replacements[item.Key] = item.Value;
+                }
+            }
 
             // =================================================
             // 10. TẠO THƯ MỤC GENERATED
@@ -536,20 +600,12 @@ public class GenerateWordRequest
 /// </summary>
 public class GenerateWordFromAIRequest
 {
-    /// <summary>
-    /// ID của mẫu Word.
-    /// </summary>
     public int DocumentTemplateId { get; set; }
+    public string DocumentType { get; set; } = string.Empty;
+    public string UserPrompt { get; set; } = string.Empty;
 
     /// <summary>
-    /// Loại văn bản.
+    /// Giá trị người dùng tự nhập: key = "[F001]".
     /// </summary>
-    public string DocumentType { get; set; } =
-        string.Empty;
-
-    /// <summary>
-    /// Yêu cầu soạn thảo của người dùng.
-    /// </summary>
-    public string UserPrompt { get; set; } =
-        string.Empty;
+    public Dictionary<string, string>? FieldValues { get; set; }
 }
