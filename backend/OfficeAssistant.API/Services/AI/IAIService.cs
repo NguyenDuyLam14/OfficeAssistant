@@ -41,5 +41,12 @@ public interface IAIService
     string userPrompt,
     string analyzedTemplateText,
     List<string> fieldIds
-);
+    );
+
+    /// <summary>
+    /// Nhận xét dữ liệu Excel dựa trên bản tóm tắt thống kê.
+    /// </summary>
+    Task<string> AnalyzeDataAsync(
+        string datasetSummary,
+        CancellationToken cancellationToken = default);
 }

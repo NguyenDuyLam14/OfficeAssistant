@@ -35,6 +35,9 @@ public class DashboardController : ControllerBase
         var totalDocuments = await _context.Documents
             .CountAsync(d => d.UserId == userId);
 
+        var totalAnalyses = await _context.ExcelAnalysisRecords
+            .CountAsync(x => x.UserId == userId);
+
         // Công việc = sự kiện đã xác nhận của user.
         var totalTasks = await _context.DetectedWorkEvents
             .CountAsync(e => e.UserId == userId && e.Status == "Confirmed");
@@ -53,7 +56,8 @@ public class DashboardController : ControllerBase
             TotalDocuments = totalDocuments,
             TotalEmails = 0,
             TotalTasks = totalTasks,
-            UpcomingTasks = upcomingTasks
+            UpcomingTasks = upcomingTasks,
+            TotalAnalyses = totalAnalyses
         });
     }
 }

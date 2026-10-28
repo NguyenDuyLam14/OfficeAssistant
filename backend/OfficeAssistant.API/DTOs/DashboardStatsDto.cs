@@ -18,4 +18,7 @@ public class DashboardStatsDto
     // Số công việc sắp đến hạn.
     // Sẽ được sử dụng khi bảng Tasks được xây dựng.
     public int UpcomingTasks { get; set; }
+
+    // Số lần phân tích file Excel.
+    public int TotalAnalyses { get; set; }
 }

@@ -20,6 +20,7 @@ type DashboardStats = {
   totalEmails: number;
   totalTasks: number;
   upcomingTasks: number;
+  totalAnalyses: number;
 };
 function Dashboard() {
   const [stats, setStats] = useState<DashboardStats>({
@@ -27,6 +28,7 @@ function Dashboard() {
     totalEmails: 0,
     totalTasks: 0,
     upcomingTasks: 0,
+    totalAnalyses: 0,
   });
 
   const [loading, setLoading] = useState(true);
@@ -122,7 +124,7 @@ function Dashboard() {
 
         <StatCard
           title="Phân tích"
-          value="0"
+          value={loading ? "..." : stats.totalAnalyses.toString()}
           description="File Excel đã xử lý"
           icon={<BarChart3 size={22} />}
         />

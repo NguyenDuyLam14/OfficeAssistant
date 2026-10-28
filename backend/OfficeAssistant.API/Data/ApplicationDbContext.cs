@@ -52,6 +52,11 @@ public class ApplicationDbContext : DbContext
     public DbSet<ProcessedGmailMessage> ProcessedGmailMessages =>
         Set<ProcessedGmailMessage>();
 
+    /// <summary>
+    /// Lịch sử phân tích file Excel.
+    /// </summary>
+    public DbSet<ExcelAnalysisRecord> ExcelAnalysisRecords =>
+        Set<ExcelAnalysisRecord>();
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -245,6 +250,27 @@ public class ApplicationDbContext : DbContext
                 .IsRequired();
 
             entity.HasIndex(x => new { x.UserId, x.GmailMessageId }).IsUnique();
+
+            entity.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Cấu hình bảng ExcelAnalysisRecords.
+        modelBuilder.Entity<ExcelAnalysisRecord>(entity =>
+        {
+            entity.HasKey(x => x.ExcelAnalysisRecordId);
+
+            entity.Property(x => x.FileName)
+                .HasMaxLength(300)
+                .IsRequired();
+
+            entity.Property(x => x.SheetName)
+                .HasMaxLength(200)
+                .IsRequired();
+
+            entity.HasIndex(x => new { x.UserId, x.CreatedAtUtc });
 
             entity.HasOne<User>()
                 .WithMany()
