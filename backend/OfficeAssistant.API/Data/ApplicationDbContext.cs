@@ -9,6 +9,11 @@ namespace OfficeAssistant.API.Data;
 /// </summary>
 public class ApplicationDbContext : DbContext
 {
+    public DbSet<EmailSummaryCache> EmailSummaryCaches => Set<EmailSummaryCache>();
+    public DbSet<EmailCampaign> EmailCampaigns => Set<EmailCampaign>();
+    public DbSet<EmailCampaignRecipient> EmailCampaignRecipients =>
+        Set<EmailCampaignRecipient>();
+
     public ApplicationDbContext(
         DbContextOptions<ApplicationDbContext> options)
         : base(options)
@@ -278,5 +283,41 @@ public class ApplicationDbContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
+        modelBuilder.Entity<EmailSummaryCache>(entity =>
+        {
+            entity.HasKey(x => x.EmailSummaryCacheId);
+            entity.Property(x => x.GmailMessageId).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.Summary).HasMaxLength(4000).IsRequired();
+            entity.HasIndex(x => new { x.UserId, x.GmailMessageId }).IsUnique();
+            entity.HasOne<User>().WithMany()
+                .HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<EmailCampaign>(entity =>
+        {
+            entity.HasKey(x => x.EmailCampaignId);
+            entity.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.Subject).HasMaxLength(300).IsRequired();
+            entity.Property(x => x.BodyTemplate).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(30).IsRequired();
+            entity.Property(x => x.Note).HasMaxLength(500);
+            entity.HasIndex(x => new { x.UserId, x.CreatedAtUtc });
+            entity.HasIndex(x => x.Status);
+            entity.HasOne<User>().WithMany()
+                .HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<EmailCampaignRecipient>(entity =>
+        {
+            entity.HasKey(x => x.EmailCampaignRecipientId);
+            entity.Property(x => x.Email).HasMaxLength(255).IsRequired();
+            entity.Property(x => x.Name).HasMaxLength(200);
+            entity.Property(x => x.Status).HasMaxLength(20).IsRequired();
+            entity.Property(x => x.Error).HasMaxLength(500);
+            entity.HasIndex(x => new { x.EmailCampaignId, x.Status });
+            entity.HasOne(x => x.Campaign).WithMany(c => c.Recipients)
+                .HasForeignKey(x => x.EmailCampaignId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
     }
 }

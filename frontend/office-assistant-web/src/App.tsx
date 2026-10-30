@@ -17,6 +17,8 @@ import Notifications from "./pages/Notifications";
 import Users from "./pages/Users";
 import Settings from "./pages/Settings";
 
+import EmailCampaigns from "./pages/EmailCampaigns";
+
 // ============================================================
 // LAYOUT CỦA ỨNG DỤNG
 // ============================================================
@@ -79,6 +81,8 @@ function App() {
             <Route path="/templates" element={<Templates />} />
 
             <Route path="/emails" element={<Emails />} />
+
+            <Route path="/emails/campaigns" element={<EmailCampaigns />} />
 
             <Route path="/tasks" element={<Tasks />} />
 

@@ -11,7 +11,7 @@ namespace OfficeAssistant.API.Services.AI;
 /// Gọi Gemini API (REST) và triển khai IAIService.
 /// Mọi request đều đi qua GeminiRateLimiter để không vượt quota free tier.
 /// </summary>
-public sealed class GeminiService : IAIService
+public sealed partial class GeminiService : IAIService
 {
     private const int MaxAttempts = 3;
 

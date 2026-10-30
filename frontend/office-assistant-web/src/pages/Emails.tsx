@@ -10,12 +10,16 @@ import {
   MailOpen,
   RefreshCw,
   Search,
-  Send,
   Unplug,
 } from "lucide-react";
 import { AxiosError } from "axios";
 
 import api from "../services/api";
+
+import { useNavigate } from "react-router-dom";
+import { PenSquare, Send as SendIcon } from "lucide-react";
+import ComposeModal from "../components/email/ComposeModal";
+import EmailAssistantPanel from "../components/email/EmailAssistantPanel";
 
 // ============================================================
 // KIỂU DỮ LIỆU TRẢ VỀ TỪ BACKEND
@@ -157,6 +161,9 @@ function Emails() {
 
   const [error, setError] = useState("");
   const [detailError, setDetailError] = useState("");
+
+  const navigate = useNavigate();
+  const [composeOpen, setComposeOpen] = useState(false);
 
   // ----------------------------------------------------------
   // KIỂM TRA TRẠNG THÁI KẾT NỐI GMAIL
@@ -477,18 +484,35 @@ function Emails() {
         </div>
 
         {gmailStatus?.connected && (
-          <button
-            type="button"
-            onClick={() => void loadMessages()}
-            disabled={loadingMessages}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <RefreshCw
-              size={16}
-              className={loadingMessages ? "animate-spin" : ""}
-            />
-            Làm mới
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setComposeOpen(true)}
+              className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
+            >
+              <PenSquare size={16} /> Soạn thư mới
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate("/emails/campaigns")}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+            >
+              <SendIcon size={16} /> Gửi hàng loạt
+            </button>
+
+            <button
+              type="button"
+              onClick={() => void loadMessages()}
+              disabled={loadingMessages}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <RefreshCw
+                size={16}
+                className={loadingMessages ? "animate-spin" : ""}
+              />
+              Làm mới
+            </button>
+          </div>
         )}
       </div>
 
@@ -879,23 +903,10 @@ function Emails() {
                       </p>
                     )}
 
-                  <div className="mt-8 rounded-xl border border-blue-100 bg-blue-50/70 p-4">
-                    <div className="flex items-start gap-3">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-blue-600 shadow-sm">
-                        <Send size={17} />
-                      </div>
-
-                      <div>
-                        <h3 className="text-sm font-semibold text-slate-800">
-                          Trợ lý email AI
-                        </h3>
-                        <p className="mt-1 text-xs leading-5 text-slate-500">
-                          Khu vực này có thể tích hợp chức năng tóm tắt email và
-                          đề xuất nội dung trả lời ở bước tiếp theo.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
+                  <EmailAssistantPanel
+                    key={selectedMessage.id}
+                    message={selectedMessage}
+                  />
                 </article>
               ) : (
                 <div className="flex min-h-80 flex-col items-center justify-center px-6 py-12 text-center">
@@ -944,6 +955,12 @@ function Emails() {
             ngay trong OfficeAssistant.
           </p>
         </section>
+      )}
+      {composeOpen && (
+        <ComposeModal
+          onClose={() => setComposeOpen(false)}
+          onSent={() => setComposeOpen(false)}
+        />
       )}
     </main>
   );

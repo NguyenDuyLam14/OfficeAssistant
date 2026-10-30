@@ -95,6 +95,10 @@ builder.Services.AddScoped<GmailWorkEventScanner>();
 // Tự động quét Gmail và phát hiện công việc trong nền.
 builder.Services.AddHostedService<GmailWorkEventBackgroundService>();
 
+builder.Services.AddScoped<GmailSender>();
+
+builder.Services.AddHostedService<EmailCampaignBackgroundService>();
+
 // ============================================================
 // CẤU HÌNH AUTHENTICATION - JWT BEARER
 // ============================================================

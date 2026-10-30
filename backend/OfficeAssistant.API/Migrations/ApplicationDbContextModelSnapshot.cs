@@ -208,6 +208,132 @@ namespace OfficeAssistant.API.Migrations
                     b.ToTable("DocumentTemplates");
                 });
 
+            modelBuilder.Entity("OfficeAssistant.API.Models.EmailCampaign", b =>
+                {
+                    b.Property<int>("EmailCampaignId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("EmailCampaignId"));
+
+                    b.Property<string>("BodyTemplate")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FinishedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime?>("StartedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("EmailCampaignId");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("UserId", "CreatedAtUtc");
+
+                    b.ToTable("EmailCampaigns");
+                });
+
+            modelBuilder.Entity("OfficeAssistant.API.Models.EmailCampaignRecipient", b =>
+                {
+                    b.Property<int>("EmailCampaignRecipientId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("EmailCampaignRecipientId"));
+
+                    b.Property<string>("DataJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<int>("EmailCampaignId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime?>("SentAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("EmailCampaignRecipientId");
+
+                    b.HasIndex("EmailCampaignId", "Status");
+
+                    b.ToTable("EmailCampaignRecipients");
+                });
+
+            modelBuilder.Entity("OfficeAssistant.API.Models.EmailSummaryCache", b =>
+                {
+                    b.Property<int>("EmailSummaryCacheId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("EmailSummaryCacheId"));
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("GmailMessageId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("EmailSummaryCacheId");
+
+                    b.HasIndex("UserId", "GmailMessageId")
+                        .IsUnique();
+
+                    b.ToTable("EmailSummaryCaches");
+                });
+
             modelBuilder.Entity("OfficeAssistant.API.Models.ExcelAnalysisRecord", b =>
                 {
                     b.Property<int>("ExcelAnalysisRecordId")
@@ -406,6 +532,35 @@ namespace OfficeAssistant.API.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("OfficeAssistant.API.Models.EmailCampaign", b =>
+                {
+                    b.HasOne("OfficeAssistant.API.Models.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("OfficeAssistant.API.Models.EmailCampaignRecipient", b =>
+                {
+                    b.HasOne("OfficeAssistant.API.Models.EmailCampaign", "Campaign")
+                        .WithMany("Recipients")
+                        .HasForeignKey("EmailCampaignId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Campaign");
+                });
+
+            modelBuilder.Entity("OfficeAssistant.API.Models.EmailSummaryCache", b =>
+                {
+                    b.HasOne("OfficeAssistant.API.Models.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("OfficeAssistant.API.Models.ExcelAnalysisRecord", b =>
                 {
                     b.HasOne("OfficeAssistant.API.Models.User", null)
@@ -433,6 +588,11 @@ namespace OfficeAssistant.API.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("OfficeAssistant.API.Models.EmailCampaign", b =>
+                {
+                    b.Navigation("Recipients");
                 });
 #pragma warning restore 612, 618
         }

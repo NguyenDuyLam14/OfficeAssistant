@@ -49,4 +49,15 @@ public interface IAIService
     Task<string> AnalyzeDataAsync(
         string datasetSummary,
         CancellationToken cancellationToken = default);
+
+    Task<string> SummarizeEmailAsync(
+    string emailSubject, string emailSender,
+    string emailDate, string emailBody,
+    CancellationToken cancellationToken = default);
+
+    Task<string> SuggestReplyAsync(
+        string emailSubject, string emailSender,
+        string emailDate, string emailBody,
+        string tone, string? userNote,
+        CancellationToken cancellationToken = default);
 }

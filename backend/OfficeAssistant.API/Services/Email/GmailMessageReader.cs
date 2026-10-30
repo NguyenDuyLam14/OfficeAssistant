@@ -11,7 +11,7 @@ namespace OfficeAssistant.API.Services.Email;
 /// Dịch vụ dùng chung cho API và background worker.
 /// Không nhận UserId từ dữ liệu email hoặc query string phía client.
 /// </summary>
-public sealed class GmailMessageReader
+public sealed partial class GmailMessageReader
 {
     private readonly ApplicationDbContext _db;
     private readonly GmailOAuthService _oauthService;
