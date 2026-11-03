@@ -72,6 +72,97 @@ const documentTypes = [
   "Khác",
 ];
 
+// Gợi ý nội dung cần nêu và ví dụ mẫu cho từng loại văn bản.
+const PROMPT_GUIDES: Record<string, { hints: string[]; example: string }> = {
+  "Thông báo": {
+    hints: [
+      "Đơn vị ban hành",
+      "Nội dung chính",
+      "Thời gian",
+      "Địa điểm",
+      "Đối tượng áp dụng",
+      "Yêu cầu / lưu ý",
+      "Người ký",
+    ],
+    example:
+      "Soạn thông báo nghỉ lễ Quốc khánh 02/9 cho toàn thể CBNV. " +
+      "Nghỉ từ 30/8 đến hết 03/9, đi làm lại ngày 04/9. " +
+      "Bộ phận trực: Bảo vệ, IT. Người ký: Giám đốc Nguyễn Văn A.",
+  },
+  "Công văn": {
+    hints: [
+      "Cơ quan nhận",
+      "Trích yếu (V/v)",
+      "Căn cứ / lý do",
+      "Nội dung đề nghị",
+      "Thời hạn phản hồi",
+      "Người ký",
+    ],
+    example:
+      "Soạn công văn gửi Sở Tài chính đề nghị gia hạn nộp báo cáo quý 3 " +
+      "đến 20/10 vì lý do chuyển đổi phần mềm kế toán.",
+  },
+  "Báo cáo": {
+    hints: [
+      "Kỳ báo cáo",
+      "Đơn vị báo cáo",
+      "Kết quả đạt được",
+      "Số liệu chính",
+      "Tồn tại / khó khăn",
+      "Kiến nghị",
+    ],
+    example:
+      "Báo cáo kết quả hoạt động tháng 10 của phòng Hành chính: " +
+      "xử lý 120 văn bản, tổ chức 3 cuộc họp, còn tồn 5 hồ sơ.",
+  },
+  "Biên bản": {
+    hints: [
+      "Thời gian",
+      "Địa điểm",
+      "Thành phần tham dự",
+      "Nội dung thảo luận",
+      "Kết luận / phân công",
+      "Chủ trì & thư ký",
+    ],
+    example:
+      "Biên bản họp giao ban sáng 05/11 tại phòng họp tầng 2, " +
+      "chủ trì: Trưởng phòng; thư ký: Lê Thị B. " +
+      "Kết luận: hoàn thành báo cáo tuần trước thứ Sáu.",
+  },
+  "Quyết định": {
+    hints: [
+      "Căn cứ pháp lý",
+      "Nội dung quyết định",
+      "Đối tượng",
+      "Hiệu lực từ ngày",
+      "Người ký",
+    ],
+    example:
+      "Quyết định bổ nhiệm ông Trần Văn C làm Trưởng phòng Kinh doanh, " +
+      "có hiệu lực từ 01/12/2026.",
+  },
+  Khác: {
+    hints: [
+      "Mục đích văn bản",
+      "Người nhận",
+      "Nội dung chính",
+      "Thời gian",
+      "Người ký",
+    ],
+    example:
+      "Nêu ngắn gọn mục đích, người nhận, nội dung chính và người ký của văn bản.",
+  },
+};
+
+// Huy hiệu số bước.
+function StepBadge({ n }: { n: number }) {
+  return (
+    <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
+      {n}
+    </span>
+  );
+}
+
 function Documents() {
   // =========================================================
   // STATE
@@ -171,6 +262,95 @@ function Documents() {
     setFieldValues({});
   };
 
+  // Hiển thị "Đã sao chép" trong 2 giây.
+  const [copied, setCopied] = useState(false);
+
+  // ---------- 2.2 BIẾN + HÀM MỚI ----------
+
+  // Gợi ý theo loại văn bản đang chọn.
+  const guide = PROMPT_GUIDES[aiDocumentType] ?? PROMPT_GUIDES["Khác"];
+
+  // Mẫu đang chọn (để lấy tên mẫu).
+  const selectedTemplate = templates.find(
+    (template) => template.documentTemplateId === aiTemplateId,
+  );
+
+  // Điều kiện bật nút.
+  const hasPrompt = aiPrompt.trim().length > 0;
+  const canGenerateText = aiTemplateId !== null && hasPrompt;
+  const canExportWord = aiTemplateId !== null && (hasPrompt || hasFieldValues);
+
+  // Lý do nút bị khóa (hiển thị cho người dùng hiểu).
+  const textHelp =
+    aiTemplateId === null
+      ? "Chọn mẫu văn bản ở bước 1 để tiếp tục."
+      : !hasPrompt
+        ? "Nhập yêu cầu ở bước 3 để tạo nội dung."
+        : "";
+
+  const wordHelp =
+    aiTemplateId === null
+      ? "Chọn mẫu văn bản ở bước 1 để xuất Word."
+      : !hasPrompt && !hasFieldValues
+        ? "Nhập yêu cầu (bước 3) hoặc điền ít nhất một trường (bước 2)."
+        : "";
+
+  const isBusy = isGeneratingAI || isGeneratingWord;
+
+  // Chèn một dòng gợi ý vào ô yêu cầu: "Thời gian: ".
+  const appendHint = (hint: string) => {
+    setAiPrompt((current) => {
+      const prefix = current.trim() ? current.replace(/\s+$/, "") + "\n" : "";
+      return `${prefix}${hint}: `;
+    });
+
+    // Đưa con trỏ về ô nhập sau khi chèn.
+    setTimeout(() => {
+      const element = document.getElementById(
+        "ai-prompt",
+      ) as HTMLTextAreaElement | null;
+
+      if (element) {
+        element.focus();
+        element.setSelectionRange(element.value.length, element.value.length);
+      }
+    }, 0);
+  };
+
+  // Xóa yêu cầu, các trường đã nhập và kết quả.
+  const handleResetAI = () => {
+    setAiPrompt("");
+    setAiContent("");
+    setAiError("");
+    setWordError("");
+    setFieldValues({});
+  };
+
+  // Sao chép nội dung AI tạo ra.
+  const handleCopyAI = async () => {
+    try {
+      await navigator.clipboard.writeText(aiContent);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setAiError("Không thể sao chép. Hãy chọn nội dung và nhấn Ctrl + C.");
+    }
+  };
+
+  // Lưu nội dung AI vào danh sách văn bản (mở modal tạo văn bản có sẵn nội dung).
+  const handleSaveAiContent = () => {
+    setEditingId(null);
+
+    setForm({
+      title: selectedTemplate?.templateName ?? "",
+      documentType: aiDocumentType,
+      content: aiContent,
+    });
+
+    setError("");
+    setModalOpen(true);
+  };
+
   // Khi người dùng chọn mẫu: lưu ID rồi tải các trường của mẫu.
   const handleSelectTemplate = async (value: string) => {
     const id = value ? Number(value) : null;
@@ -214,55 +394,36 @@ function Documents() {
    *   ↓
    * React
    */
+  // Tạo nội dung dạng văn bản để xem trước và chỉnh sửa.
   const handleGenerateAI = async () => {
-    // Kiểm tra yêu cầu của người dùng.
-    if (!aiPrompt.trim() && !hasFieldValues) {
-      setWordError("Vui lòng nhập yêu cầu hoặc điền ít nhất một trường.");
-
-      return;
-    }
-
     if (aiTemplateId === null) {
       setAiError("Vui lòng chọn mẫu văn bản.");
-
       return;
     }
 
-    // Xóa lỗi cũ.
-    setAiError("");
+    if (!aiPrompt.trim()) {
+      setAiError("Vui lòng nhập yêu cầu soạn thảo.");
+      return;
+    }
 
-    // Hiển thị trạng thái đang xử lý.
+    setAiError("");
+    setWordError("");
     setIsGeneratingAI(true);
 
     try {
-      // Gọi API backend.
-      //
-      // Không cần tự lấy token ở đây.
-      // File services/api.ts của bạn đã có interceptor
-      // tự động thêm:
-      //
-      // Authorization: Bearer <JWT>
       const response = await api.post<GenerateDocumentResponse>(
         "/AI/generate-document",
         {
           documentType: aiDocumentType,
-
-          // Gửi ID template thay vì tên template.
           documentTemplateId: aiTemplateId,
-
-          userPrompt: aiPrompt,
+          userPrompt: aiPrompt.trim(),
         } satisfies GenerateDocumentRequest,
       );
 
-      // Lấy nội dung AI trả về.
       setAiContent(response.data.content);
-
-      // Xóa lỗi nếu trước đó có lỗi.
-      setAiError("");
     } catch (error) {
       console.error("Lỗi khi gọi API AI:", error);
 
-      // AxiosError có response nếu backend thực sự trả về HTTP error.
       if (axios.isAxiosError(error)) {
         const message = error.response?.data?.message;
 
@@ -273,7 +434,6 @@ function Documents() {
         setAiError("Đã xảy ra lỗi khi gọi AI.");
       }
     } finally {
-      // Tắt loading dù thành công hay thất bại.
       setIsGeneratingAI(false);
     }
   };
@@ -301,94 +461,64 @@ function Documents() {
    * và tự động tải xuống máy.
    */
   const handleGenerateAIWord = async () => {
-    // Kiểm tra người dùng đã chọn template chưa.
     if (aiTemplateId === null) {
       setWordError("Vui lòng chọn mẫu văn bản trước khi xuất Word.");
-
       return;
     }
 
-    // Kiểm tra yêu cầu soạn thảo.
-    if (!aiPrompt.trim()) {
-      setWordError("Vui lòng nhập yêu cầu soạn thảo.");
-
+    // Khớp với backend: chấp nhận khi có yêu cầu HOẶC có ít nhất một trường.
+    if (!aiPrompt.trim() && !hasFieldValues) {
+      setWordError("Vui lòng nhập yêu cầu hoặc điền ít nhất một trường.");
       return;
     }
 
     try {
-      // Bật trạng thái loading.
       setIsGeneratingWord(true);
-
-      // Xóa lỗi cũ.
       setWordError("");
+      setAiError("");
 
-      // Gọi API backend.
-      //
-      // API trả về file .docx nên phải sử dụng:
-      // responseType: "blob"
       const response = await api.post(
         "/Word/generate-from-ai",
         {
           documentTemplateId: aiTemplateId,
           documentType: aiDocumentType,
           userPrompt: aiPrompt.trim(),
-          fieldValues: filledFieldValues, // thêm
+          fieldValues: filledFieldValues,
         },
         {
           responseType: "blob",
         },
       );
 
-      // =====================================================
-      // TẠO BLOB TỪ FILE WORD
-      // =====================================================
-
       const blob = new Blob([response.data], {
         type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       });
 
-      // Tạo URL tạm cho file.
       const url = window.URL.createObjectURL(blob);
-
-      // Tạo thẻ <a> tạm để kích hoạt download.
       const link = document.createElement("a");
 
       link.href = url;
-
-      // Đặt tên file mặc định.
       link.download = `AI_${aiDocumentType}_${new Date()
         .toISOString()
         .slice(0, 10)}.docx`;
 
-      // Thêm vào DOM.
       document.body.appendChild(link);
-
-      // Kích hoạt tải file.
       link.click();
-
-      // Xóa thẻ <a>.
       link.remove();
 
-      // Giải phóng URL tạm.
       window.URL.revokeObjectURL(url);
     } catch (error) {
       console.error("Lỗi AI soạn và xuất Word:", error);
 
       let message = "Không thể tạo file Word bằng AI.";
 
-      // =====================================================
-      // XỬ LÝ LỖI AXIOS
-      // =====================================================
-
       if (axios.isAxiosError(error)) {
         const responseData = error.response?.data;
 
-        // Vì API đang trả lỗi dưới dạng Blob
-        // nên cần đọc Blob thành text.
+        // API trả lỗi dạng Blob nên phải đọc thành text.
         if (responseData instanceof Blob) {
           try {
             const errorText = await responseData.text();
-
             const errorJson = JSON.parse(errorText);
 
             if (errorJson.message) {
@@ -402,7 +532,6 @@ function Documents() {
 
       setWordError(message);
     } finally {
-      // Tắt trạng thái loading.
       setIsGeneratingWord(false);
     }
   };
@@ -746,31 +875,43 @@ function Documents() {
           ===================================================== */}
 
       <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        {/* Tiêu đề khu vực AI */}
-        <div className="mb-5 flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-100 text-xl">
-            ✨
+        {/* Tiêu đề */}
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-100 text-xl">
+              ✨
+            </div>
+
+            <div>
+              <h2 className="text-lg font-bold text-slate-800">
+                Soạn thảo văn bản bằng AI
+              </h2>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Làm theo 3 bước: chọn mẫu, (tùy chọn) điền trường, mô tả yêu
+                cầu.
+              </p>
+            </div>
           </div>
 
-          <div>
-            <h2 className="text-lg font-bold text-slate-800">
-              Soạn thảo văn bản bằng AI
-            </h2>
-
-            <p className="mt-1 text-sm text-slate-500">
-              Nhập yêu cầu để AI hỗ trợ soạn thảo nội dung văn bản.
-            </p>
-          </div>
+          <button
+            type="button"
+            onClick={handleResetAI}
+            disabled={isBusy || (!aiPrompt && !aiContent && !hasFieldValues)}
+            className="self-start rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 sm:self-auto"
+          >
+            Làm lại từ đầu
+          </button>
         </div>
 
-        {/* Loại văn bản + mẫu văn bản */}
+        {/* BƯỚC 1: loại văn bản + mẫu */}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {/* Loại văn bản */}
           <div>
             <label
               htmlFor="ai-document-type"
-              className="mb-2 block text-sm font-medium text-slate-700"
+              className="mb-2 flex items-center text-sm font-medium text-slate-700"
             >
+              <StepBadge n={1} />
               Loại văn bản
             </label>
 
@@ -780,40 +921,32 @@ function Documents() {
               onChange={(event) => {
                 const newDocumentType = event.target.value;
 
-                // Đổi loại văn bản.
                 setAiDocumentType(newDocumentType);
 
-                // Kiểm tra mẫu hiện tại có phù hợp với loại mới không.
                 if (aiTemplateId !== null) {
-                  const selectedTemplate = templates.find(
+                  const currentTemplate = templates.find(
                     (template) => template.documentTemplateId === aiTemplateId,
                   );
 
-                  if (!selectedTemplate) {
-                    // Template không còn tồn tại.
+                  if (!currentTemplate) {
                     setAiTemplateId(null);
                     clearTemplateFields();
                   } else if (newDocumentType === "Khác") {
-                    // Với "Khác", chỉ chấp nhận template
-                    // không thuộc các loại chính.
                     const isOtherTemplate = !documentTypes
                       .filter((type) => type !== "Khác")
-                      .includes(selectedTemplate.documentType);
+                      .includes(currentTemplate.documentType);
 
                     if (!isOtherTemplate) {
                       setAiTemplateId(null);
                       clearTemplateFields();
                     }
-                  } else if (
-                    selectedTemplate.documentType !== newDocumentType
-                  ) {
-                    // Template hiện tại không thuộc loại mới.
+                  } else if (currentTemplate.documentType !== newDocumentType) {
                     setAiTemplateId(null);
                     clearTemplateFields();
                   }
                 }
               }}
-              disabled={isGeneratingAI}
+              disabled={isBusy}
               className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
             >
               {documentTypes.map((type) => (
@@ -824,12 +957,12 @@ function Documents() {
             </select>
           </div>
 
-          {/* Mẫu văn bản */}
           <div>
             <label
               htmlFor="ai-template-id"
-              className="mb-2 block text-sm font-medium text-slate-700"
+              className="mb-2 flex items-center text-sm font-medium text-slate-700"
             >
+              <StepBadge n={1} />
               Mẫu văn bản
             </label>
 
@@ -839,7 +972,7 @@ function Documents() {
               onChange={(event) =>
                 void handleSelectTemplate(event.target.value)
               }
-              disabled={isGeneratingAI || templatesLoading}
+              disabled={isBusy || templatesLoading}
               className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
             >
               <option value="">
@@ -859,19 +992,30 @@ function Documents() {
                 </option>
               ))}
             </select>
+
+            {!templatesLoading && filteredTemplates.length === 0 && (
+              <p className="mt-1 text-xs text-amber-600">
+                Chưa có mẫu nào cho loại này. Nhờ quản trị viên thêm mẫu ở mục
+                "Mẫu văn bản", hoặc chọn loại khác.
+              </p>
+            )}
           </div>
         </div>
 
-        {/* Các trường trong mẫu Word */}
+        {/* BƯỚC 2: các trường trong mẫu */}
         {aiTemplateId !== null && (
           <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
-            <h3 className="text-sm font-semibold text-slate-800">
+            <h3 className="flex items-center text-sm font-semibold text-slate-800">
+              <StepBadge n={2} />
               Thông tin các trường trong mẫu
+              <span className="ml-2 rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                Không bắt buộc
+              </span>
             </h3>
 
             <p className="mt-1 text-xs text-slate-500">
-              Trường nào để trống, AI sẽ tự điền dựa trên yêu cầu soạn thảo bên
-              dưới.
+              Biết thông tin nào thì điền vào đó. Trường để trống sẽ do AI tự
+              điền dựa trên yêu cầu ở bước 3.
             </p>
 
             {fieldsLoading ? (
@@ -893,7 +1037,6 @@ function Documents() {
                       Trường {index + 1}
                     </label>
 
-                    {/* Câu chứa trường để người dùng biết cần nhập gì */}
                     <p className="mb-1 text-xs italic text-slate-400">
                       {field.context}
                     </p>
@@ -908,7 +1051,7 @@ function Documents() {
                           [field.fieldId]: event.target.value,
                         }))
                       }
-                      disabled={isGeneratingWord}
+                      disabled={isBusy}
                       placeholder="Để trống để AI điền"
                       className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
                     />
@@ -919,81 +1062,138 @@ function Documents() {
           </div>
         )}
 
-        {/* Yêu cầu cho AI */}
+        {/* BƯỚC 3: yêu cầu soạn thảo */}
         <div className="mt-4">
           <label
             htmlFor="ai-prompt"
-            className="mb-2 block text-sm font-medium text-slate-700"
+            className="mb-2 flex items-center text-sm font-medium text-slate-700"
           >
+            <StepBadge n={3} />
             Yêu cầu soạn thảo
           </label>
+
+          {/* Chip gợi ý nội dung cần nêu */}
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <span className="text-xs text-slate-500">
+              Nên nêu rõ (bấm để chèn):
+            </span>
+
+            {guide.hints.map((hint) => {
+              const used = aiPrompt.includes(`${hint}:`);
+
+              return (
+                <button
+                  key={hint}
+                  type="button"
+                  onClick={() => appendHint(hint)}
+                  disabled={isBusy}
+                  className={`rounded-full px-3 py-1 text-xs font-medium transition disabled:opacity-50 ${
+                    used
+                      ? "bg-green-50 text-green-700 hover:bg-green-100"
+                      : "bg-blue-50 text-blue-700 hover:bg-blue-100"
+                  }`}
+                >
+                  {used ? "✓ " : "+ "}
+                  {hint}
+                </button>
+              );
+            })}
+          </div>
 
           <textarea
             id="ai-prompt"
             value={aiPrompt}
             onChange={(event) => setAiPrompt(event.target.value)}
-            disabled={isGeneratingAI}
-            rows={5}
-            placeholder="Ví dụ: Soạn thông báo về việc nghỉ lễ Quốc khánh 02/9, yêu cầu cán bộ nhân viên hoàn thành công việc trước kỳ nghỉ..."
+            disabled={isBusy}
+            rows={6}
+            placeholder={`Ví dụ: ${guide.example}`}
             className="w-full resize-y rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
           />
+
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => setAiPrompt(guide.example)}
+              disabled={isBusy}
+              className="text-xs font-medium text-blue-600 hover:underline disabled:opacity-50"
+            >
+              Dùng ví dụ mẫu cho "{aiDocumentType}"
+            </button>
+
+            {templateFields.length > 0 && (
+              <p className="text-xs text-slate-500">
+                Mẫu có {templateFields.length} trường: chỉ cần mô tả bối cảnh
+                chung, AI sẽ tự điền các trường để trống.
+              </p>
+            )}
+          </div>
+
+          {hasPrompt && aiPrompt.trim().length < 30 && (
+            <p className="mt-1 text-xs text-amber-600">
+              Yêu cầu còn ngắn. Hãy nêu thêm thời gian, đối tượng và nội dung
+              chính để AI soạn chính xác hơn.
+            </p>
+          )}
         </div>
 
-        {/* Lỗi AI */}
+        {/* Thông báo lỗi */}
         {aiError && (
           <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {aiError}
           </div>
         )}
 
-        {/* =====================================================
-    NÚT AI
-    ===================================================== */}
+        {wordError && (
+          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {wordError}
+          </div>
+        )}
 
-        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:justify-end">
-          {/* ================================================
-      AI TẠO NỘI DUNG
-      ================================================ */}
+        {/* Thông báo đang xử lý */}
+        {isBusy && (
+          <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+            AI đang soạn, có thể mất 10–30 giây. Vui lòng không đóng trang.
+          </div>
+        )}
 
-          <button
-            type="button"
-            onClick={handleGenerateAI}
-            disabled={isGeneratingAI || isGeneratingWord}
-            className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isGeneratingAI ? "Đang tạo văn bản..." : "✨ Tạo nội dung bằng AI"}
-          </button>
+        {/* BƯỚC 4: hai nút tạo */}
+        <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <button
+              type="button"
+              onClick={() => void handleGenerateAI()}
+              disabled={isBusy || !canGenerateText}
+              className="w-full rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isGeneratingAI
+                ? "Đang tạo văn bản..."
+                : "✨ Tạo nội dung bằng AI"}
+            </button>
 
-          {/* ================================================
-      AI SOẠN + XUẤT WORD
-      ================================================ */}
+            <p className="mt-1 text-xs text-slate-500">
+              {textHelp ||
+                "Xem trước nội dung dạng văn bản, có thể chỉnh sửa và lưu."}
+            </p>
+          </div>
 
-          <button
-            type="button"
-            onClick={handleGenerateAIWord}
-            disabled={
-              isGeneratingAI ||
-              isGeneratingWord ||
-              aiTemplateId === null ||
-              (!aiPrompt.trim() && !hasFieldValues)
-            }
-            className="rounded-xl bg-green-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isGeneratingWord
-              ? "Đang tạo file Word..."
-              : "📄 AI soạn & xuất Word"}
-          </button>
+          <div>
+            <button
+              type="button"
+              onClick={() => void handleGenerateAIWord()}
+              disabled={isBusy || !canExportWord}
+              className="w-full rounded-xl bg-green-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isGeneratingWord
+                ? "Đang tạo file Word..."
+                : "📄 AI soạn & xuất Word"}
+            </button>
+
+            <p className="mt-1 text-xs text-slate-500">
+              {wordHelp || "Điền thẳng vào mẫu .docx và tải file về máy."}
+            </p>
+          </div>
         </div>
       </section>
-      {/* =====================================================
-    LỖI AI SOẠN & XUẤT WORD
-    ===================================================== */}
-
-      {wordError && (
-        <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {wordError}
-        </div>
-      )}
 
       {/* =====================================================
           KẾT QUẢ AI
@@ -1008,17 +1208,28 @@ function Documents() {
               </h2>
 
               <p className="mt-1 text-sm text-slate-500">
-                Bạn có thể kiểm tra và chỉnh sửa nội dung trước khi lưu.
+                Hãy kiểm tra và chỉnh sửa nội dung trước khi sử dụng. AI có thể
+                sai sót hoặc để trống thông tin còn thiếu.
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={() => navigator.clipboard.writeText(aiContent)}
-              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-            >
-              Sao chép
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void handleCopyAI()}
+                className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              >
+                {copied ? "✓ Đã sao chép" : "Sao chép"}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSaveAiContent}
+                className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+              >
+                Lưu vào danh sách văn bản
+              </button>
+            </div>
           </div>
 
           <textarea
@@ -1029,10 +1240,6 @@ function Documents() {
           />
         </section>
       )}
-
-      {/* =====================================================
-          SEARCH + FILTER
-          ===================================================== */}
 
       {/* =====================================================
           SEARCH + FILTER
