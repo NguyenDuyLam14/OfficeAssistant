@@ -287,4 +287,33 @@ public sealed class EmailsController : ControllerBase
             connection.TokenExpiresAtUtc
         });
     }
+
+    /// <summary>
+    /// Ngắt kết nối Gmail của người dùng hiện tại.
+    /// DELETE /api/Emails/disconnect
+    /// </summary>
+    [HttpDelete("disconnect")]
+    public async Task<IActionResult> Disconnect(
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetCurrentUserId(out var userId))
+        {
+            return Unauthorized(new
+            {
+                message = "Không xác định được người dùng đang đăng nhập."
+            });
+        }
+
+        var connection = await _context.GmailConnections
+            .FirstOrDefaultAsync(
+                x => x.UserId == userId, cancellationToken);
+
+        if (connection != null)
+        {
+            _context.GmailConnections.Remove(connection);
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        return Ok(new { message = "Đã ngắt kết nối Gmail." });
+    }
 }

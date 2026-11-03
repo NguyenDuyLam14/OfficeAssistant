@@ -7,6 +7,8 @@ using OfficeAssistant.API.Data;
 using OfficeAssistant.API.DTOs;
 using OfficeAssistant.API.Models;
 
+using System.Security.Claims;
+
 namespace OfficeAssistant.API.Controllers;
 
 /// <summary>
@@ -101,8 +103,8 @@ public class UsersController : ControllerBase
         {
             FullName = fullName,
             Email = email,
-            // Không lấy vai trò từ dữ liệu gửi lên để tránh tự cấp quyền Admin.
-            Role = "Staff",
+            // Endpoint chỉ dành cho Admin nên được phép chọn vai trò.
+            Role = dto.Role == "Admin" ? "Admin" : "Staff",
             IsActive = true,
             CreatedAt = DateTime.UtcNow
         };
@@ -131,5 +133,110 @@ public class UsersController : ControllerBase
                 user.CreatedAt
             }
         );
+    }
+
+    private int? GetCurrentUserId()
+    {
+        return int.TryParse(
+            User.FindFirstValue(ClaimTypes.NameIdentifier),
+            out var id) ? id : null;
+    }
+
+    /// <summary>
+    /// Cập nhật họ tên, vai trò, trạng thái của người dùng.
+    /// PUT api/users/{id}
+    /// </summary>
+    [HttpPut("{id:int}")]
+    public async Task<IActionResult> UpdateUser(int id, UpdateUserDto dto)
+    {
+        if (string.IsNullOrWhiteSpace(dto.FullName))
+        {
+            return BadRequest(new
+            {
+                message = "Họ và tên không được để trống."
+            });
+        }
+
+        if (dto.Role != "Admin" && dto.Role != "Staff")
+        {
+            return BadRequest(new
+            {
+                message = "Vai trò không hợp lệ."
+            });
+        }
+
+        var user = await _context.Users
+            .FirstOrDefaultAsync(x => x.UserId == id);
+
+        if (user == null)
+        {
+            return NotFound(new
+            {
+                message = "Không tìm thấy người dùng."
+            });
+        }
+
+        // Không cho Admin tự khóa hoặc tự hạ quyền chính mình,
+        // tránh tình huống hệ thống không còn Admin nào.
+        if (GetCurrentUserId() == id &&
+            (dto.Role != "Admin" || !dto.IsActive))
+        {
+            return BadRequest(new
+            {
+                message = "Bạn không thể tự khóa hoặc tự hạ quyền tài khoản của mình."
+            });
+        }
+
+        user.FullName = dto.FullName.Trim();
+        user.Role = dto.Role;
+        user.IsActive = dto.IsActive;
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            user.UserId,
+            user.FullName,
+            user.Email,
+            user.Role,
+            user.IsActive,
+            user.CreatedAt
+        });
+    }
+
+    /// <summary>
+    /// Đặt lại mật khẩu cho người dùng.
+    /// POST api/users/{id}/reset-password
+    /// </summary>
+    [HttpPost("{id:int}/reset-password")]
+    public async Task<IActionResult> ResetPassword(
+        int id, ResetPasswordDto dto)
+    {
+        if (string.IsNullOrWhiteSpace(dto.NewPassword) ||
+            dto.NewPassword.Length < 8)
+        {
+            return BadRequest(new
+            {
+                message = "Mật khẩu mới phải có ít nhất 8 ký tự."
+            });
+        }
+
+        var user = await _context.Users
+            .FirstOrDefaultAsync(x => x.UserId == id);
+
+        if (user == null)
+        {
+            return NotFound(new
+            {
+                message = "Không tìm thấy người dùng."
+            });
+        }
+
+        user.PasswordHash = _passwordHasher.HashPassword(
+            user, dto.NewPassword);
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new { message = "Đã đặt lại mật khẩu." });
     }
 }
