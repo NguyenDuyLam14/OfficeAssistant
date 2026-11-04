@@ -1,19 +1,17 @@
-import type { ReactNode } from 'react'
+import type { ReactNode } from "react";
 
 type QuickActionProps = {
-  icon: ReactNode
-  title: string
-  description: string
-}
+  icon: ReactNode;
+  title: string;
+  description: string;
+  onClick?: () => void;
+};
 
-function QuickAction({
-  icon,
-  title,
-  description,
-}: QuickActionProps) {
+function QuickAction({ icon, title, description, onClick }: QuickActionProps) {
   return (
     <button
       type="button"
+      onClick={onClick}
       className="group flex items-start gap-4 rounded-xl border border-slate-200 p-4 text-left transition hover:border-blue-300 hover:bg-blue-50"
     >
       {/* Icon */}
@@ -23,16 +21,12 @@ function QuickAction({
 
       {/* Nội dung */}
       <div>
-        <h4 className="font-semibold text-slate-800">
-          {title}
-        </h4>
+        <h4 className="font-semibold text-slate-800">{title}</h4>
 
-        <p className="mt-1 text-xs leading-5 text-slate-500">
-          {description}
-        </p>
+        <p className="mt-1 text-xs leading-5 text-slate-500">{description}</p>
       </div>
     </button>
-  )
+  );
 }
 
-export default QuickAction
+export default QuickAction;
