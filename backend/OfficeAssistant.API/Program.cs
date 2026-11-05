@@ -11,6 +11,8 @@ using OfficeAssistant.API.Services.Word;
 
 using OfficeAssistant.API.Services.Email;
 
+using OfficeAssistant.API.Services.Files;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // ============================================================
@@ -79,6 +81,8 @@ builder.Services.AddScoped<IAIService>(
 
 // Service xử lý file Word bằng OpenXML.
 builder.Services.AddScoped<WordTemplateService>();
+
+builder.Services.AddSingleton<LocalFileSearchService>();
 
 builder.Services.AddSingleton<GmailTokenProtector>();
 

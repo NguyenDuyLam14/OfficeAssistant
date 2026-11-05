@@ -60,4 +60,12 @@ public interface IAIService
         string emailDate, string emailBody,
         string tone, string? userNote,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Tóm tắt văn bản thành các ý chính.
+    /// </summary>
+    Task<string> SummarizeDocumentAsync(
+        string title,
+        string content,
+        CancellationToken cancellationToken = default);
 }

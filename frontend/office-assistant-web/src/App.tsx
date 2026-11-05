@@ -19,6 +19,8 @@ import Settings from "./pages/Settings";
 
 import EmailCampaigns from "./pages/EmailCampaigns";
 
+import FileSearch from "./pages/FileSearch";
+
 // ============================================================
 // LAYOUT CỦA ỨNG DỤNG
 // ============================================================
@@ -77,6 +79,10 @@ function App() {
             <Route path="/" element={<Dashboard />} />
 
             <Route path="/documents" element={<Documents />} />
+
+            <Route path="/documents" element={<Documents />} />
+
+            <Route path="/file-search" element={<FileSearch />} />
 
             <Route path="/templates" element={<Templates />} />
 

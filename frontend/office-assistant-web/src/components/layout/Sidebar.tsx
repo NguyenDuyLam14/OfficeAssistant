@@ -9,6 +9,7 @@ import {
   Settings,
   Sparkles,
   Users,
+  FolderSearch,
 } from "lucide-react";
 
 import { NavLink } from "react-router-dom";
@@ -69,6 +70,13 @@ function Sidebar({ sidebarOpen }: SidebarProps) {
           to="/documents"
           icon={<FileText size={20} />}
           label="Văn bản"
+          collapsed={!sidebarOpen}
+        />
+
+        <SidebarItem
+          to="/file-search"
+          icon={<FolderSearch size={20} />}
+          label="Tìm văn bản"
           collapsed={!sidebarOpen}
         />
 

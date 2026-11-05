@@ -1,6 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { FileText, Plus, Search, Pencil, Trash2, X } from "lucide-react";
+import {
+  FileText,
+  Plus,
+  Search,
+  Pencil,
+  Trash2,
+  X,
+  Sparkles,
+} from "lucide-react";
+
+import SummaryModal from "../components/common/SummaryModal";
+
+import { summarizeDocument, summarizeText } from "../services/fileService";
+
+import type { SummaryResult } from "../services/fileService";
 
 import api from "../services/api";
 
@@ -205,6 +219,12 @@ function Documents() {
     documentType: "Thông báo",
     content: "",
   });
+
+  // Hộp thoại tóm tắt ý chính.
+  const [summaryTarget, setSummaryTarget] = useState<{
+    title: string;
+    load: () => Promise<SummaryResult>;
+  } | null>(null);
 
   // =========================================================
   // STATE CHO CHỨC NĂNG SOẠN THẢO BẰNG AI
@@ -1216,6 +1236,23 @@ function Documents() {
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
+                onClick={() =>
+                  setSummaryTarget({
+                    title: selectedTemplate?.templateName ?? aiDocumentType,
+                    load: () =>
+                      summarizeText(
+                        selectedTemplate?.templateName ?? aiDocumentType,
+                        aiContent,
+                      ),
+                  })
+                }
+                className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-100"
+              >
+                <Sparkles size={16} />
+                Tóm tắt ý chính
+              </button>
+              <button
+                type="button"
                 onClick={() => void handleCopyAI()}
                 className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
               >
@@ -1396,6 +1433,25 @@ function Documents() {
                       <div className="flex justify-end gap-2">
                         <button
                           type="button"
+                          onClick={() =>
+                            setSummaryTarget({
+                              title: document.title,
+                              load: () =>
+                                summarizeDocument(document.documentId),
+                            })
+                          }
+                          disabled={!document.content?.trim()}
+                          className="rounded-lg p-2 text-slate-500 hover:bg-blue-50 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-30"
+                          title={
+                            document.content?.trim()
+                              ? "Tóm tắt ý chính"
+                              : "Văn bản chưa có nội dung"
+                          }
+                        >
+                          <Sparkles size={17} />
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => handleEdit(document)}
                           className="rounded-lg p-2 text-slate-500 hover:bg-blue-50 hover:text-blue-600"
                           title="Sửa văn bản"
@@ -1566,6 +1622,13 @@ function Documents() {
             </form>
           </div>
         </div>
+      )}
+      {summaryTarget && (
+        <SummaryModal
+          title={summaryTarget.title}
+          load={summaryTarget.load}
+          onClose={() => setSummaryTarget(null)}
+        />
       )}
     </main>
   );
