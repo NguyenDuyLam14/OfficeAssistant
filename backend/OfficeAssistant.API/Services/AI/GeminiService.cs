@@ -13,7 +13,7 @@ namespace OfficeAssistant.API.Services.AI;
 /// </summary>
 public sealed partial class GeminiService : IAIService
 {
-    private const int MaxAttempts = 3;
+    private const int MaxAttempts = 4;
 
     private readonly HttpClient _http;
     private readonly GeminiRateLimiter _limiter;
@@ -147,7 +147,7 @@ public sealed partial class GeminiService : IAIService
             if ((status == 500 || status == 503) && attempt < MaxAttempts)
             {
                 await Task.Delay(
-                    TimeSpan.FromSeconds(5 * attempt), cancellationToken);
+                    TimeSpan.FromSeconds(8 * attempt), cancellationToken);
                 continue;
             }
 

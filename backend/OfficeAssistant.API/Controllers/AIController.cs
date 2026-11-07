@@ -149,6 +149,15 @@ public class AIController : ControllerBase
                     template.DocumentType
             });
         }
+        catch (InvalidOperationException ex) when (
+            ex.Message.Contains("HTTP 503") ||
+            ex.Message.Contains("HTTP 500"))
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+            {
+                message = "Dịch vụ AI đang quá tải. Vui lòng thử lại sau ít phút."
+            });
+        }
         catch (Exception ex)
         {
             // Ghi lỗi vào console để phục vụ debug.
