@@ -68,4 +68,13 @@ public interface IAIService
         string title,
         string content,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Trả lời câu hỏi của người dùng dựa trên nội dung một văn bản.
+    /// </summary>
+    Task<string> AnswerDocumentQuestionAsync(
+        string title,
+        string content,
+        string question,
+        CancellationToken cancellationToken = default);
 }

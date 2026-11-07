@@ -120,3 +120,49 @@ export async function summarizeText(
 
   return response.data
 }
+
+// ---------------- Hỏi đáp ----------------
+
+export interface AnswerResult {
+  answer: string
+  truncated: boolean
+}
+
+export async function askText(
+  title: string,
+  content: string,
+  question: string,
+): Promise<AnswerResult> {
+  const response = await api.post<AnswerResult>('/Summary/ask-text', {
+    title,
+    content,
+    question,
+  })
+
+  return response.data
+}
+
+export async function askDocument(
+  id: number,
+  question: string,
+): Promise<AnswerResult> {
+  const response = await api.post<AnswerResult>(
+    `/Summary/ask-document/${id}`,
+    { question },
+  )
+
+  return response.data
+}
+
+export async function askFile(
+  item: LocalFileItem,
+  question: string,
+): Promise<AnswerResult> {
+  const response = await api.post<AnswerResult>('/Summary/ask-file', {
+    rootIndex: item.rootIndex,
+    relativePath: item.relativePath,
+    question,
+  })
+
+  return response.data
+}

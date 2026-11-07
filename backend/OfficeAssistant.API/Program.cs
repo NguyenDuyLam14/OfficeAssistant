@@ -30,7 +30,8 @@ builder.Services.AddCors(options =>
         policy
             .WithOrigins("http://localhost:5173")
             .AllowAnyHeader()
-            .AllowAnyMethod();
+            .AllowAnyMethod()
+            .WithExposedHeaders("Content-Disposition", "X-Document-Id");
     });
 });
 
@@ -102,6 +103,8 @@ builder.Services.AddHostedService<GmailWorkEventBackgroundService>();
 builder.Services.AddScoped<GmailSender>();
 
 builder.Services.AddHostedService<EmailCampaignBackgroundService>();
+
+builder.Services.AddHostedService<WorkEventReminderBackgroundService>();
 
 // ============================================================
 // CẤU HÌNH AUTHENTICATION - JWT BEARER

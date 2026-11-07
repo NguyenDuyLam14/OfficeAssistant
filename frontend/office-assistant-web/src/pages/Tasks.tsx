@@ -5,11 +5,16 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  Pencil,
+  Plus,
   RefreshCw,
+  Trash2,
   X,
 } from "lucide-react";
 
 import api from "../services/api";
+
+import TaskFormModal from "../components/tasks/TaskFormModal";
 
 // =========================================================
 // KIỂU DỮ LIỆU
@@ -23,6 +28,7 @@ type CalendarEvent = {
   startAtUtc: string | null;
   dueAtUtc: string | null;
   status: "Confirmed" | "Completed" | string;
+  isManual?: boolean;
 };
 
 // =========================================================
@@ -126,6 +132,9 @@ function Tasks() {
   );
   const [completingId, setCompletingId] = useState<number | null>(null);
 
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<CalendarEvent | null>(null);
+
   // -------------------------------------------------------
   // Tạo 42 ô (6 tuần) của lưới tháng, bắt đầu từ Thứ Hai.
   // -------------------------------------------------------
@@ -145,6 +154,7 @@ function Tasks() {
   // -------------------------------------------------------
   // Tải sự kiện trong khoảng của lưới.
   // -------------------------------------------------------
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const loadEvents = useCallback(async () => {
     setLoading(true);
     setError("");
@@ -262,6 +272,19 @@ function Tasks() {
 
   const todayKey = dateKey(today);
 
+  const deleteEvent = async (event: CalendarEvent) => {
+    if (!window.confirm(`Xóa công việc "${event.title}"?`)) return;
+
+    try {
+      await api.delete(`/DetectedWorkEvents/${event.id}`);
+      setSelectedEvent(null);
+      await loadEvents();
+    } catch (err) {
+      console.error("Không thể xóa công việc:", err);
+      setError("Không thể xóa công việc. Vui lòng thử lại.");
+    }
+  };
+
   // =======================================================
   // GIAO DIỆN
   // =======================================================
@@ -286,6 +309,18 @@ function Tasks() {
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setEditing(null);
+              setFormOpen(true);
+            }}
+            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+          >
+            <Plus size={16} />
+            Thêm công việc
+          </button>
+
           <button
             type="button"
             onClick={goToday}
@@ -537,6 +572,31 @@ function Tasks() {
             </dl>
 
             <div className="mt-6 flex justify-end gap-3">
+              {selectedEvent.isManual && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void deleteEvent(selectedEvent)}
+                    className="inline-flex items-center gap-2 rounded-xl border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+                  >
+                    <Trash2 size={16} />
+                    Xóa
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditing(selectedEvent);
+                      setSelectedEvent(null);
+                      setFormOpen(true);
+                    }}
+                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    <Pencil size={16} />
+                    Sửa
+                  </button>
+                </>
+              )}
               <button
                 type="button"
                 onClick={() => setSelectedEvent(null)}
@@ -559,6 +619,20 @@ function Tasks() {
             </div>
           </div>
         </div>
+      )}
+      {formOpen && (
+        <TaskFormModal
+          initial={editing}
+          onClose={() => {
+            setFormOpen(false);
+            setEditing(null);
+          }}
+          onSaved={() => {
+            setFormOpen(false);
+            setEditing(null);
+            void loadEvents();
+          }}
+        />
       )}
     </main>
   );

@@ -8,6 +8,8 @@ using Microsoft.EntityFrameworkCore;
 using OfficeAssistant.API.Data;
 using OfficeAssistant.API.Models;
 
+using OfficeAssistant.API.Services.Email;
+
 namespace OfficeAssistant.API.Controllers;
 
 /// <summary>
@@ -33,6 +35,203 @@ public sealed class DetectedWorkEventsController : ControllerBase
         var value = User.FindFirstValue(ClaimTypes.NameIdentifier);
 
         return int.TryParse(value, out userId) && userId > 0;
+    }
+
+    private const string ManualPrefix = "manual-";
+
+    private static readonly string[] AllowedEventTypes =
+        { "Meeting", "Deadline", "Appointment", "Task", "Other" };
+
+    private static string? ValidateManual(
+        ManualEventRequest request, out string eventType)
+    {
+        eventType = AllowedEventTypes.FirstOrDefault(x =>
+            string.Equals(x, request.EventType,
+                StringComparison.OrdinalIgnoreCase)) ?? "Other";
+
+        var title = request.Title?.Trim() ?? string.Empty;
+
+        if (title.Length == 0 || title.Length > 300)
+        {
+            return "Tiêu đề không được để trống (tối đa 300 ký tự).";
+        }
+
+        if (request.Description is { Length: > 4000 })
+        {
+            return "Mô tả tối đa 4000 ký tự.";
+        }
+
+        if (!request.StartAt.HasValue && !request.DueAt.HasValue)
+        {
+            return "Cần chọn thời gian bắt đầu hoặc hạn chót.";
+        }
+
+        if (request.StartAt.HasValue && request.DueAt.HasValue &&
+            request.DueAt < request.StartAt)
+        {
+            return "Hạn chót phải sau thời gian bắt đầu.";
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// POST /api/DetectedWorkEvents/manual
+    /// Người dùng tự tạo công việc, vào lịch ngay (đã xác nhận).
+    /// </summary>
+    [HttpPost("manual")]
+    public async Task<IActionResult> CreateManualEvent(
+        ManualEventRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetCurrentUserId(out var userId))
+        {
+            return Unauthorized(new
+            {
+                message = "Không xác định được người dùng đang đăng nhập."
+            });
+        }
+
+        var error = ValidateManual(request, out var eventType);
+
+        if (error != null)
+        {
+            return BadRequest(new { message = error });
+        }
+
+        var now = DateTime.UtcNow;
+
+        var item = new DetectedWorkEvent
+        {
+            UserId = userId,
+            GmailMessageId = ManualPrefix + Guid.NewGuid().ToString("N"),
+            EventType = eventType,
+            Title = request.Title.Trim(),
+            Description = string.IsNullOrWhiteSpace(request.Description)
+                ? null
+                : request.Description.Trim(),
+            StartAtUtc = request.StartAt?.ToUniversalTime(),
+            DueAtUtc = request.DueAt?.ToUniversalTime(),
+            TimeZoneId = "Asia/Ho_Chi_Minh",
+            Status = "Confirmed",
+            DetectedAtUtc = now,
+            ConfirmedAtUtc = now
+        };
+
+        _context.DetectedWorkEvents.Add(item);
+        await _context.SaveChangesAsync(cancellationToken);
+
+        return Ok(new
+        {
+            message = "Đã thêm công việc.",
+            id = item.DetectedWorkEventId
+        });
+    }
+
+    /// <summary>
+    /// PUT /api/DetectedWorkEvents/{id}/manual
+    /// Chỉ sửa được công việc do người dùng tự tạo.
+    /// </summary>
+    [HttpPut("{id:int}/manual")]
+    public async Task<IActionResult> UpdateManualEvent(
+        int id,
+        ManualEventRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetCurrentUserId(out var userId))
+        {
+            return Unauthorized(new
+            {
+                message = "Không xác định được người dùng đang đăng nhập."
+            });
+        }
+
+        var error = ValidateManual(request, out var eventType);
+
+        if (error != null)
+        {
+            return BadRequest(new { message = error });
+        }
+
+        var item = await _context.DetectedWorkEvents.FirstOrDefaultAsync(
+            x => x.DetectedWorkEventId == id
+                 && x.UserId == userId
+                 && x.GmailMessageId.StartsWith(ManualPrefix),
+            cancellationToken);
+
+        if (item == null)
+        {
+            return NotFound(new
+            {
+                message = "Không tìm thấy công việc tự tạo."
+            });
+        }
+
+        item.EventType = eventType;
+        item.Title = request.Title.Trim();
+        item.Description = string.IsNullOrWhiteSpace(request.Description)
+            ? null
+            : request.Description.Trim();
+        item.StartAtUtc = request.StartAt?.ToUniversalTime();
+        item.DueAtUtc = request.DueAt?.ToUniversalTime();
+
+        // Đổi giờ thì nhắc việc phải được gửi lại theo giờ mới.
+        var oldReminders = await _context.AppNotifications
+            .Where(n => n.DetectedWorkEventId == id
+                        && (n.NotificationType ==
+                                WorkEventReminderBackgroundService.Type24h
+                            || n.NotificationType ==
+                                WorkEventReminderBackgroundService.Type1h))
+            .ToListAsync(cancellationToken);
+
+        _context.AppNotifications.RemoveRange(oldReminders);
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        return Ok(new { message = "Đã cập nhật công việc.", id });
+    }
+
+    /// <summary>
+    /// DELETE /api/DetectedWorkEvents/{id}
+    /// Chỉ xóa được công việc do người dùng tự tạo.
+    /// </summary>
+    [HttpDelete("{id:int}")]
+    public async Task<IActionResult> DeleteManualEvent(
+        int id,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetCurrentUserId(out var userId))
+        {
+            return Unauthorized(new
+            {
+                message = "Không xác định được người dùng đang đăng nhập."
+            });
+        }
+
+        var item = await _context.DetectedWorkEvents.FirstOrDefaultAsync(
+            x => x.DetectedWorkEventId == id
+                 && x.UserId == userId
+                 && x.GmailMessageId.StartsWith(ManualPrefix),
+            cancellationToken);
+
+        if (item == null)
+        {
+            return NotFound(new
+            {
+                message = "Không tìm thấy công việc tự tạo."
+            });
+        }
+
+        var reminders = await _context.AppNotifications
+            .Where(n => n.DetectedWorkEventId == id)
+            .ToListAsync(cancellationToken);
+
+        _context.AppNotifications.RemoveRange(reminders);
+        _context.DetectedWorkEvents.Remove(item);
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        return Ok(new { message = "Đã xóa công việc." });
     }
 
     /// <summary>
@@ -82,7 +281,8 @@ public sealed class DetectedWorkEventsController : ControllerBase
                 eventType = x.EventType,
                 startAtUtc = x.StartAtUtc,
                 dueAtUtc = x.DueAtUtc,
-                status = x.Status
+                status = x.Status,
+                isManual = x.GmailMessageId.StartsWith(ManualPrefix)
             })
             .ToListAsync(cancellationToken);
 
@@ -374,4 +574,13 @@ public sealed class DetectedWorkEventsController : ControllerBase
             status = item.Status
         });
     }
+}
+
+public sealed class ManualEventRequest
+{
+    public string Title { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public string EventType { get; set; } = "Task";
+    public DateTime? StartAt { get; set; }
+    public DateTime? DueAt { get; set; }
 }

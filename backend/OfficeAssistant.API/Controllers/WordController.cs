@@ -5,6 +5,9 @@ using OfficeAssistant.API.Data;
 using OfficeAssistant.API.Services.Word;
 using OfficeAssistant.API.Services.AI;
 
+using System.Security.Claims;
+using OfficeAssistant.API.Models;
+
 namespace OfficeAssistant.API.Controllers;
 
 /// <summary>
@@ -509,17 +512,62 @@ public class WordController : ControllerBase
             }
 
             // =================================================
-            // 14. ĐỌC FILE
+            // 14. LƯU BẢN GHI VÀO DANH SÁCH VĂN BẢN
+            // =================================================
+
+            // Lưu bản ghi lỗi không được làm mất file người dùng đã chờ.
+            try
+            {
+                if (int.TryParse(
+                        User.FindFirstValue(ClaimTypes.NameIdentifier),
+                        out var userId))
+                {
+                    var documentType = string.IsNullOrWhiteSpace(
+                        request.DocumentType)
+                        ? template.DocumentType
+                        : request.DocumentType.Trim();
+
+                    if (documentType.Length > 100)
+                    {
+                        documentType = documentType[..100];
+                    }
+
+                    var document = new Document
+                    {
+                        Title =
+                            $"{template.TemplateName} - {DateTime.Now:dd/MM/yyyy HH:mm}",
+                        DocumentType = documentType,
+                        Content = null,
+                        FilePath = $"Storage/Generated/{generatedFileName}",
+                        UserId = userId,
+                        DocumentTemplateId = template.DocumentTemplateId,
+                        CreatedAt = DateTime.UtcNow
+                    };
+
+                    _context.Documents.Add(document);
+                    await _context.SaveChangesAsync();
+
+                    Response.Headers["X-Document-Id"] =
+                        document.DocumentId.ToString();
+                }
+            }
+            catch (Exception saveEx)
+            {
+                Console.WriteLine("===== SAVE WORD RECORD ERROR =====");
+                Console.WriteLine(saveEx.ToString());
+                Console.WriteLine("==================================");
+
+                _context.ChangeTracker.Clear();
+            }
+
+            // =================================================
+            // 15. ĐỌC FILE VÀ TRẢ VỀ
             // =================================================
 
             var fileBytes =
                 await System.IO.File.ReadAllBytesAsync(
                     generatedFilePath
                 );
-
-            // =================================================
-            // 15. TRẢ FILE
-            // =================================================
 
             return File(
                 fileBytes,

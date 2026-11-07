@@ -12,6 +12,8 @@ import {
   FolderSearch,
 } from "lucide-react";
 
+import { getCurrentUser } from "../../services/authService";
+
 import { NavLink } from "react-router-dom";
 
 type SidebarProps = {
@@ -19,6 +21,7 @@ type SidebarProps = {
 };
 
 function Sidebar({ sidebarOpen }: SidebarProps) {
+  const isAdmin = getCurrentUser()?.role === "Admin";
   return (
     <aside
       className={`fixed left-0 top-0 z-40 h-screen bg-slate-900 text-white transition-all duration-300 ${
@@ -124,12 +127,14 @@ function Sidebar({ sidebarOpen }: SidebarProps) {
           collapsed={!sidebarOpen}
         />
 
-        <SidebarItem
-          to="/users"
-          icon={<Users size={20} />}
-          label="Người dùng"
-          collapsed={!sidebarOpen}
-        />
+        {isAdmin && (
+          <SidebarItem
+            to="/users"
+            icon={<Users size={20} />}
+            label="Người dùng"
+            collapsed={!sidebarOpen}
+          />
+        )}
 
         <SidebarItem
           to="/settings"

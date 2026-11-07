@@ -11,7 +11,7 @@ using OfficeAssistant.API.Services.Files;
 namespace OfficeAssistant.API.Controllers;
 
 /// <summary>
-/// Tóm tắt văn bản thành các ý chính bằng AI.
+/// Tóm tắt văn bản và hỏi đáp trên văn bản bằng AI.
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
@@ -20,6 +20,7 @@ public sealed class SummaryController : ControllerBase
 {
     private const int MaxChars = 12000;
     private const int MinChars = 50;
+    private const int MaxQuestionChars = 500;
 
     private readonly IAIService _ai;
     private readonly ApplicationDbContext _db;
@@ -38,101 +39,194 @@ public sealed class SummaryController : ControllerBase
         _logger = logger;
     }
 
-    // POST api/Summary/text  (văn bản chưa lưu, ví dụ nội dung AI vừa tạo)
+    private bool TryGetUserId(out int userId) =>
+        int.TryParse(
+            User.FindFirstValue(ClaimTypes.NameIdentifier), out userId);
+
+    // =========================================================
+    // TÓM TẮT
+    // =========================================================
+
+    // POST api/Summary/text
     [HttpPost("text")]
     public Task<IActionResult> SummarizeText(
         SummarizeTextRequest request, CancellationToken cancellationToken) =>
-        RunAsync(request.Title, request.Content, cancellationToken);
+        SummarizeAsync(request.Title, request.Content, cancellationToken);
 
-    // POST api/Summary/document/5  (văn bản đã lưu của người dùng)
+    // POST api/Summary/document/5
     [HttpPost("document/{id:int}")]
     public async Task<IActionResult> SummarizeDocument(
         int id, CancellationToken cancellationToken)
     {
-        if (!int.TryParse(
-                User.FindFirstValue(ClaimTypes.NameIdentifier),
-                out var userId))
+        if (!TryGetUserId(out var userId))
         {
             return Unauthorized();
         }
 
-        var document = await _db.Documents
-            .AsNoTracking()
-            .Where(x => x.DocumentId == id && x.UserId == userId)
-            .Select(x => new { x.Title, x.Content })
-            .FirstOrDefaultAsync(cancellationToken);
+        var document = await FindDocumentAsync(id, userId, cancellationToken);
 
         if (document == null)
         {
             return NotFound(new { message = "Không tìm thấy văn bản." });
         }
 
-        return await RunAsync(
+        return await SummarizeAsync(
             document.Title, document.Content, cancellationToken);
     }
 
-    // POST api/Summary/file  (file tìm được trong thư mục cấu hình)
+    // POST api/Summary/file
     [HttpPost("file")]
     public async Task<IActionResult> SummarizeFile(
         SummarizeFileRequest request, CancellationToken cancellationToken)
     {
-        var path = _files.ResolvePath(request.RootIndex, request.RelativePath);
+        var (title, text, error) = await ReadFileAsync(
+            request.RootIndex, request.RelativePath, cancellationToken);
+
+        if (error != null)
+        {
+            return error;
+        }
+
+        return await SummarizeAsync(title, text, cancellationToken);
+    }
+
+    // =========================================================
+    // HỎI ĐÁP
+    // =========================================================
+
+    // POST api/Summary/ask-text
+    [HttpPost("ask-text")]
+    public Task<IActionResult> AskText(
+        AskTextRequest request, CancellationToken cancellationToken) =>
+        AskAsync(
+            request.Title, request.Content, request.Question,
+            cancellationToken);
+
+    // POST api/Summary/ask-document/5
+    [HttpPost("ask-document/{id:int}")]
+    public async Task<IActionResult> AskDocument(
+        int id, AskDocumentRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetUserId(out var userId))
+        {
+            return Unauthorized();
+        }
+
+        var document = await FindDocumentAsync(id, userId, cancellationToken);
+
+        if (document == null)
+        {
+            return NotFound(new { message = "Không tìm thấy văn bản." });
+        }
+
+        return await AskAsync(
+            document.Title, document.Content, request.Question,
+            cancellationToken);
+    }
+
+    // POST api/Summary/ask-file
+    [HttpPost("ask-file")]
+    public async Task<IActionResult> AskFile(
+        AskFileRequest request, CancellationToken cancellationToken)
+    {
+        var (title, text, error) = await ReadFileAsync(
+            request.RootIndex, request.RelativePath, cancellationToken);
+
+        if (error != null)
+        {
+            return error;
+        }
+
+        return await AskAsync(
+            title, text, request.Question, cancellationToken);
+    }
+
+    // =========================================================
+    // HÀM HỖ TRỢ
+    // =========================================================
+
+    private Task<DocumentBrief?> FindDocumentAsync(
+        int id, int userId, CancellationToken cancellationToken) =>
+        _db.Documents
+            .AsNoTracking()
+            .Where(x => x.DocumentId == id && x.UserId == userId)
+            .Select(x => new DocumentBrief(x.Title, x.Content))
+            .FirstOrDefaultAsync(cancellationToken);
+
+    private async Task<(string Title, string Text, IActionResult? Error)>
+        ReadFileAsync(
+            int rootIndex,
+            string relativePath,
+            CancellationToken cancellationToken)
+    {
+        var path = _files.ResolvePath(rootIndex, relativePath);
 
         if (path == null)
         {
-            return NotFound(new { message = "Không tìm thấy file." });
+            return (string.Empty, string.Empty,
+                NotFound(new { message = "Không tìm thấy file." }));
         }
 
         if (!LocalFileSearchService.IsSummarizable(path))
         {
-            return BadRequest(new
+            return (string.Empty, string.Empty, BadRequest(new
             {
-                message = "Hiện chỉ tóm tắt được file .docx, .txt, .md, .csv."
-            });
+                message = "Hiện chỉ hỗ trợ file .docx, .txt, .md, .csv."
+            }));
         }
-
-        string text;
 
         try
         {
-            text = await Task.Run(
+            var text = await Task.Run(
                 () => _files.ExtractText(path), cancellationToken);
+
+            return (Path.GetFileNameWithoutExtension(path), text, null);
         }
         catch (Exception ex) when (
             ex is IOException or InvalidDataException or
             DocumentFormat.OpenXml.Packaging.OpenXmlPackageException)
         {
-            _logger.LogWarning(ex, "Không đọc được file để tóm tắt.");
+            _logger.LogWarning(ex, "Không đọc được file.");
 
-            return BadRequest(new
+            return (string.Empty, string.Empty, BadRequest(new
             {
                 message = "Không đọc được file. File có thể bị lỗi hoặc đặt mật khẩu."
-            });
+            }));
         }
-
-        return await RunAsync(
-            Path.GetFileNameWithoutExtension(path), text, cancellationToken);
     }
 
-    // ---------------------------------------------------------
-    private async Task<IActionResult> RunAsync(
-        string? title, string? content, CancellationToken cancellationToken)
+    // Cắt về giới hạn; trả null nếu nội dung quá ngắn.
+    private static string? PrepareText(string? content, out bool truncated)
     {
         var text = content?.Trim() ?? string.Empty;
+        truncated = false;
 
         if (text.Length < MinChars)
+        {
+            return null;
+        }
+
+        if (text.Length > MaxChars)
+        {
+            text = text[..MaxChars];
+            truncated = true;
+        }
+
+        return text;
+    }
+
+    private async Task<IActionResult> SummarizeAsync(
+        string? title, string? content, CancellationToken cancellationToken)
+    {
+        var text = PrepareText(content, out var truncated);
+
+        if (text == null)
         {
             return BadRequest(new
             {
                 message = "Nội dung quá ngắn hoặc trống, không cần tóm tắt."
             });
-        }
-
-        var truncated = text.Length > MaxChars;
-
-        if (truncated)
-        {
-            text = text[..MaxChars];
         }
 
         try
@@ -142,29 +236,80 @@ public sealed class SummaryController : ControllerBase
 
             return Ok(new { summary, truncated });
         }
-        catch (GeminiQuotaException ex)
+        catch (Exception ex) when (
+            !(ex is OperationCanceledException &&
+              cancellationToken.IsCancellationRequested))
+        {
+            return AiFailure(ex);
+        }
+    }
+
+    private async Task<IActionResult> AskAsync(
+        string? title,
+        string? content,
+        string? question,
+        CancellationToken cancellationToken)
+    {
+        var q = question?.Trim() ?? string.Empty;
+
+        if (q.Length == 0)
+        {
+            return BadRequest(new { message = "Vui lòng nhập câu hỏi." });
+        }
+
+        if (q.Length > MaxQuestionChars)
+        {
+            return BadRequest(new
+            {
+                message = $"Câu hỏi tối đa {MaxQuestionChars} ký tự."
+            });
+        }
+
+        var text = PrepareText(content, out var truncated);
+
+        if (text == null)
+        {
+            return BadRequest(new
+            {
+                message = "Nội dung quá ngắn hoặc trống để hỏi đáp."
+            });
+        }
+
+        try
+        {
+            var answer = await _ai.AnswerDocumentQuestionAsync(
+                title ?? string.Empty, text, q, cancellationToken);
+
+            return Ok(new { answer, truncated });
+        }
+        catch (Exception ex) when (
+            !(ex is OperationCanceledException &&
+              cancellationToken.IsCancellationRequested))
+        {
+            return AiFailure(ex);
+        }
+    }
+
+    private IActionResult AiFailure(Exception ex)
+    {
+        if (ex is GeminiQuotaException quota)
         {
             return StatusCode(StatusCodes.Status429TooManyRequests, new
             {
                 message = "AI đang tạm hết lượt sử dụng. Vui lòng thử lại sau.",
-                retryAfterUtc = ex.RetryAfterUtc
+                retryAfterUtc = quota.RetryAfterUtc
             });
         }
-        catch (OperationCanceledException)
-            when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Lỗi khi AI tóm tắt văn bản.");
 
-            return StatusCode(StatusCodes.Status500InternalServerError, new
-            {
-                message = "Đã xảy ra lỗi khi nhờ AI tóm tắt."
-            });
-        }
+        _logger.LogError(ex, "Lỗi khi AI xử lý văn bản.");
+
+        return StatusCode(StatusCodes.Status500InternalServerError, new
+        {
+            message = "Đã xảy ra lỗi khi nhờ AI xử lý văn bản."
+        });
     }
+
+    private sealed record DocumentBrief(string Title, string? Content);
 }
 
 public sealed class SummarizeTextRequest
@@ -177,4 +322,23 @@ public sealed class SummarizeFileRequest
 {
     public int RootIndex { get; set; }
     public string RelativePath { get; set; } = string.Empty;
+}
+
+public sealed class AskTextRequest
+{
+    public string Title { get; set; } = string.Empty;
+    public string Content { get; set; } = string.Empty;
+    public string Question { get; set; } = string.Empty;
+}
+
+public sealed class AskDocumentRequest
+{
+    public string Question { get; set; } = string.Empty;
+}
+
+public sealed class AskFileRequest
+{
+    public int RootIndex { get; set; }
+    public string RelativePath { get; set; } = string.Empty;
+    public string Question { get; set; } = string.Empty;
 }

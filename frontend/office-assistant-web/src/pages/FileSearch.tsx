@@ -18,6 +18,7 @@ import {
   getRoots,
   searchFiles,
   summarizeLocalFile,
+  askFile,
 } from "../services/fileService";
 import type {
   FileCategory,
@@ -25,6 +26,7 @@ import type {
   LocalFileSearchResponse,
   RootInfo,
   SummaryResult,
+  AnswerResult,
 } from "../services/fileService";
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -75,6 +77,10 @@ function FileSearch() {
   );
   const [loadSummary, setLoadSummary] = useState<
     (() => Promise<SummaryResult>) | null
+  >(null);
+
+  const [askFn, setAskFn] = useState<
+    ((question: string) => Promise<AnswerResult>) | null
   >(null);
 
   useEffect(() => {
@@ -148,11 +154,13 @@ function FileSearch() {
   const openSummary = (item: LocalFileItem) => {
     setSummaryTarget(item);
     setLoadSummary(() => () => summarizeLocalFile(item));
+    setAskFn(() => (question: string) => askFile(item, question));
   };
 
   const closeSummary = () => {
     setSummaryTarget(null);
     setLoadSummary(null);
+    setAskFn(null);
   };
 
   const handleDownload = async (item: LocalFileItem) => {
@@ -461,6 +469,7 @@ function FileSearch() {
           title={summaryTarget.name}
           load={loadSummary}
           onClose={closeSummary}
+          ask={askFn ?? undefined}
         />
       )}
     </main>

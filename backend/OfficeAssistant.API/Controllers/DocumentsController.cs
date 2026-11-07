@@ -16,11 +16,14 @@ namespace OfficeAssistant.API.Controllers;
 public class DocumentsController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
+    private readonly IWebHostEnvironment _environment;
 
     public DocumentsController(
-        ApplicationDbContext context)
+       ApplicationDbContext context,
+       IWebHostEnvironment environment)
     {
         _context = context;
+        _environment = environment;
     }
 
     // =========================================================
@@ -50,7 +53,8 @@ public class DocumentsController : ControllerBase
                 document.UserId,
                 document.DocumentTemplateId,
                 document.CreatedAt,
-                document.UpdatedAt
+                document.UpdatedAt,
+                hasFile = document.FilePath != null
             })
             .ToListAsync();
 
@@ -252,8 +256,12 @@ public class DocumentsController : ControllerBase
         document.Title = dto.Title.Trim();
         document.DocumentType = dto.DocumentType.Trim();
         document.Content = dto.Content;
-        document.DocumentTemplateId =
-            dto.DocumentTemplateId;
+        // Chỉ đổi mẫu khi client gửi giá trị cụ thể;
+        // null nghĩa là "giữ nguyên", không phải "xóa".
+        if (dto.DocumentTemplateId.HasValue)
+        {
+            document.DocumentTemplateId = dto.DocumentTemplateId;
+        }
 
         document.UpdatedAt = DateTime.UtcNow;
 
@@ -279,7 +287,7 @@ public class DocumentsController : ControllerBase
     // =========================================================
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> DeleteDocument(
-        int id)
+    int id)
     {
         var userId = GetCurrentUserId();
 
@@ -301,14 +309,83 @@ public class DocumentsController : ControllerBase
             });
         }
 
+        // Xác định file Word (nếu có) trước khi xóa bản ghi.
+        var physicalPath = ResolveGeneratedFile(document.FilePath);
+
         _context.Documents.Remove(document);
 
         await _context.SaveChangesAsync();
+
+        // Xóa file vật lý sau khi DB đã xóa thành công.
+        if (physicalPath != null)
+        {
+            try { System.IO.File.Delete(physicalPath); }
+            catch { /* Không xóa được file thì bỏ qua. */ }
+        }
 
         return Ok(new
         {
             message = "Xóa văn bản thành công."
         });
+    }
+
+    // =========================================================
+    // GET: api/documents/5/file
+    // Tải lại file Word đã xuất.
+    // =========================================================
+    [HttpGet("{id:int}/file")]
+    public async Task<IActionResult> DownloadFile(int id)
+    {
+        var userId = GetCurrentUserId();
+
+        if (userId == null)
+        {
+            return Unauthorized();
+        }
+
+        var filePath = await _context.Documents
+            .AsNoTracking()
+            .Where(d => d.DocumentId == id && d.UserId == userId.Value)
+            .Select(d => d.FilePath)
+            .FirstOrDefaultAsync();
+
+        var physicalPath = ResolveGeneratedFile(filePath);
+
+        if (physicalPath == null)
+        {
+            return NotFound(new
+            {
+                message = "Không tìm thấy file Word của văn bản này."
+            });
+        }
+
+        return PhysicalFile(
+            physicalPath,
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            Path.GetFileName(physicalPath));
+    }
+
+    // Chỉ chấp nhận file nằm trong Storage/Generated (chống ../).
+    private string? ResolveGeneratedFile(string? relativePath)
+    {
+        if (string.IsNullOrWhiteSpace(relativePath))
+        {
+            return null;
+        }
+
+        var baseDirectory = Path.GetFullPath(Path.Combine(
+            _environment.ContentRootPath, "Storage", "Generated"))
+            + Path.DirectorySeparatorChar;
+
+        var full = Path.GetFullPath(Path.Combine(
+            _environment.ContentRootPath,
+            relativePath.Replace('/', Path.DirectorySeparatorChar)));
+
+        return full.StartsWith(
+                baseDirectory, StringComparison.OrdinalIgnoreCase)
+            && System.IO.File.Exists(full)
+            ? full
+            : null;
     }
 
     // =========================================================

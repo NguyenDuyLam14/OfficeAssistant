@@ -80,8 +80,6 @@ function App() {
 
             <Route path="/documents" element={<Documents />} />
 
-            <Route path="/documents" element={<Documents />} />
-
             <Route path="/file-search" element={<FileSearch />} />
 
             <Route path="/templates" element={<Templates />} />

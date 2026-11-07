@@ -8,13 +8,19 @@ import {
   Trash2,
   X,
   Sparkles,
+  Download,
 } from "lucide-react";
 
 import SummaryModal from "../components/common/SummaryModal";
 
-import { summarizeDocument, summarizeText } from "../services/fileService";
+import {
+  askDocument,
+  askText,
+  summarizeDocument,
+  summarizeText,
+} from "../services/fileService";
 
-import type { SummaryResult } from "../services/fileService";
+import type { AnswerResult, SummaryResult } from "../services/fileService";
 
 import api from "../services/api";
 
@@ -63,6 +69,7 @@ type DocumentItem = {
   documentTemplateId: number | null;
   createdAt: string;
   updatedAt: string | null;
+  hasFile?: boolean;
 };
 
 type DocumentForm = {
@@ -224,6 +231,7 @@ function Documents() {
   const [summaryTarget, setSummaryTarget] = useState<{
     title: string;
     load: () => Promise<SummaryResult>;
+    ask?: (question: string) => Promise<AnswerResult>;
   } | null>(null);
 
   // =========================================================
@@ -527,6 +535,7 @@ function Documents() {
       link.remove();
 
       window.URL.revokeObjectURL(url);
+      await loadDocuments();
     } catch (error) {
       console.error("Lỗi AI soạn và xuất Word:", error);
 
@@ -824,6 +833,31 @@ function Documents() {
       console.error("Không thể xóa văn bản:", error);
 
       setError("Không thể xóa văn bản. Vui lòng thử lại.");
+    }
+  };
+
+  const handleDownloadFile = async (item: DocumentItem) => {
+    try {
+      setError("");
+
+      const response = await api.get(`/documents/${item.documentId}/file`, {
+        responseType: "blob",
+      });
+
+      const url = window.URL.createObjectURL(response.data as Blob);
+      const link = window.document.createElement("a");
+
+      link.href = url;
+      link.download = `${item.title.replace(/[\\/:*?"<>|]/g, "_")}.docx`;
+
+      window.document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Không thể tải file Word:", err);
+      setError("Không thể tải file Word. File có thể đã bị xóa.");
     }
   };
 
@@ -1244,6 +1278,12 @@ function Documents() {
                         selectedTemplate?.templateName ?? aiDocumentType,
                         aiContent,
                       ),
+                    ask: (question) =>
+                      askText(
+                        selectedTemplate?.templateName ?? aiDocumentType,
+                        aiContent,
+                        question,
+                      ),
                   })
                 }
                 className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-100"
@@ -1438,6 +1478,8 @@ function Documents() {
                               title: document.title,
                               load: () =>
                                 summarizeDocument(document.documentId),
+                              ask: (question) =>
+                                askDocument(document.documentId, question),
                             })
                           }
                           disabled={!document.content?.trim()}
@@ -1450,6 +1492,7 @@ function Documents() {
                         >
                           <Sparkles size={17} />
                         </button>
+
                         <button
                           type="button"
                           onClick={() => handleEdit(document)}
@@ -1458,6 +1501,17 @@ function Documents() {
                         >
                           <Pencil size={17} />
                         </button>
+
+                        {document.hasFile && (
+                          <button
+                            type="button"
+                            onClick={() => void handleDownloadFile(document)}
+                            className="rounded-lg p-2 text-slate-500 hover:bg-green-50 hover:text-green-600"
+                            title="Tải file Word"
+                          >
+                            <Download size={17} />
+                          </button>
+                        )}
 
                         <button
                           type="button"
@@ -1627,6 +1681,7 @@ function Documents() {
         <SummaryModal
           title={summaryTarget.title}
           load={summaryTarget.load}
+          ask={summaryTarget.ask}
           onClose={() => setSummaryTarget(null)}
         />
       )}

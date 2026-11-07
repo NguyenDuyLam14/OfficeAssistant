@@ -1,14 +1,45 @@
-import { useState } from "react";
-
+import { useEffect, useState } from "react";
 import { Bell, Menu, X, LogOut, User } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 
-import { useNavigate } from "react-router-dom";
-
+import api from "../../services/api";
 import { getCurrentUser, logout } from "../../services/authService";
 
 type HeaderProps = {
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
+};
+
+const PAGE_TITLES: Record<string, { title: string; subtitle: string }> = {
+  "/": { title: "Dashboard", subtitle: "Tổng quan hoạt động văn phòng" },
+  "/documents": {
+    title: "Văn bản",
+    subtitle: "Quản lý và soạn thảo văn bản bằng AI",
+  },
+  "/file-search": {
+    title: "Tìm văn bản",
+    subtitle: "Tìm file trên máy theo tên, loại, nội dung",
+  },
+  "/templates": { title: "Mẫu văn bản", subtitle: "Quản lý các mẫu văn bản" },
+  "/emails": { title: "Email", subtitle: "Hộp thư Gmail và trợ lý AI" },
+  "/emails/campaigns": {
+    title: "Gửi email hàng loạt",
+    subtitle: "Chiến dịch gửi thư cá nhân hóa",
+  },
+  "/tasks": { title: "Công việc", subtitle: "Lịch công việc và nhắc việc" },
+  "/excel": {
+    title: "Phân tích Excel",
+    subtitle: "Thống kê và trực quan hóa dữ liệu",
+  },
+  "/notifications": {
+    title: "Thông báo",
+    subtitle: "Thông báo và sự kiện chờ xác nhận",
+  },
+  "/users": {
+    title: "Người dùng",
+    subtitle: "Quản lý tài khoản và phân quyền",
+  },
+  "/settings": { title: "Cài đặt", subtitle: "Tài khoản và kết nối Gmail" },
 };
 
 function Header({ sidebarOpen, onToggleSidebar }: HeaderProps) {
@@ -23,6 +54,36 @@ function Header({ sidebarOpen, onToggleSidebar }: HeaderProps) {
   // ==========================================================
 
   const navigate = useNavigate();
+
+  const location = useLocation();
+  const page = PAGE_TITLES[location.pathname] ?? PAGE_TITLES["/"];
+
+  // Số thông báo chưa đọc: tải lại khi đổi trang và mỗi 60 giây.
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadUnread() {
+      try {
+        const response = await api.get<{ unreadCount: number }>(
+          "/Notifications/unread-count",
+        );
+
+        if (!cancelled) setUnreadCount(response.data.unreadCount);
+      } catch {
+        // Bỏ qua lỗi tạm thời, lần sau sẽ thử lại.
+      }
+    }
+
+    void loadUnread();
+    const timer = setInterval(() => void loadUnread(), 60_000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [location.pathname]);
 
   // ==========================================================
   // LẤY THÔNG TIN NGƯỜI DÙNG ĐANG ĐĂNG NHẬP
@@ -93,11 +154,8 @@ function Header({ sidebarOpen, onToggleSidebar }: HeaderProps) {
 
         {/* Tiêu đề */}
         <div>
-          <h2 className="font-semibold text-slate-800">Dashboard</h2>
-
-          <p className="text-xs text-slate-500">
-            Tổng quan hoạt động văn phòng
-          </p>
+          <h2 className="font-semibold text-slate-800">{page.title}</h2>
+          <p className="text-xs text-slate-500">{page.subtitle}</p>
         </div>
       </div>
 
@@ -118,7 +176,11 @@ function Header({ sidebarOpen, onToggleSidebar }: HeaderProps) {
         >
           <Bell size={21} />
 
-          <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500" />
+          {unreadCount > 0 && (
+            <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </span>
+          )}
         </button>
 
         {/* ===================================================
