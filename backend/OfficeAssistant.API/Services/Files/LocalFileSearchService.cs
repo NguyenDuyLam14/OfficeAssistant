@@ -63,8 +63,21 @@ public sealed class LocalFileSearchService
 
     public LocalFileSearchService(IConfiguration configuration)
     {
-        _roots = (configuration.GetSection("FileSearch:Roots")
-                .Get<string[]>() ?? Array.Empty<string>())
+        var configured = configuration.GetSection("FileSearch:Roots")
+            .Get<string[]>() ?? Array.Empty<string>();
+
+        foreach (var path in configured)
+        {
+            Console.WriteLine(
+                $"[FileSearch] Cấu hình: '{path}' | Tồn tại: {Directory.Exists(path)}");
+        }
+
+        if (configured.Length == 0)
+        {
+            Console.WriteLine("[FileSearch] Không đọc được FileSearch:Roots.");
+        }
+
+        _roots = configured
             .Where(path => !string.IsNullOrWhiteSpace(path) &&
                            Directory.Exists(path))
             .Select(Path.GetFullPath)
