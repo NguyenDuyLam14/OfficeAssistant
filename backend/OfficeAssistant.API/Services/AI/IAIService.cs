@@ -1,5 +1,6 @@
 namespace OfficeAssistant.API.Services.AI;
 
+using OfficeAssistant.API.DTOs;
 using OfficeAssistant.API.DTOs.Email;
 
 /// <summary>
@@ -47,7 +48,7 @@ public interface IAIService
     /// Nhận xét dữ liệu Excel dựa trên bản tóm tắt thống kê.
     /// </summary>
     Task<string> AnalyzeDataAsync(
-        string datasetSummary,
+        string datasetSummary, string? userPrompt,
         CancellationToken cancellationToken = default);
 
     Task<string> SummarizeEmailAsync(
@@ -76,5 +77,11 @@ public interface IAIService
         string title,
         string content,
         string question,
+        CancellationToken cancellationToken = default);
+
+
+
+    Task<SlideOutline> GenerateSlideOutlineAsync(
+        string title, string content, int slideCount, string? audience,
         CancellationToken cancellationToken = default);
 }

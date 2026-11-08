@@ -400,6 +400,11 @@ public class ExcelController : ControllerBase
 
         try
         {
+            var userPrompt = request.UserPrompt?.Trim();
+
+            if (userPrompt is { Length: > 1000 })
+                return BadRequest(new { message = "Yêu cầu tối đa 1000 ký tự." });
+
             var summary = BuildSummaryText(request);
 
             var insight = await _aiService.AnalyzeDataAsync(
@@ -609,4 +614,5 @@ public sealed class ExcelStatsRequest
     public string SheetName { get; set; } = string.Empty;
     public int TotalRows { get; set; }
     public List<ColumnStats> Columns { get; set; } = new();
+    public string? UserPrompt { get; set; }
 }

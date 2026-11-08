@@ -28,6 +28,11 @@ import {
 
 import api from "../services/api";
 
+import AiPromptBuilder from "../components/excel/AiPromptBuilder";
+import PresentationModal from "../components/presentation/PresentationModal";
+import { exportSummaryDocx } from "../services/presentationService";
+import { getApiMessage } from "../services/emailService";
+
 // =========================================================
 // KIỂU DỮ LIỆU
 // =========================================================
@@ -119,6 +124,28 @@ function ExcelAnalysis() {
   const [aiError, setAiError] = useState("");
   const [exporting, setExporting] = useState(false);
 
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [docId, setDocId] = useState<number | null>(null);
+  const [exportingDoc, setExportingDoc] = useState(false);
+  const [pptOpen, setPptOpen] = useState(false);
+
+  const handleExportWord = async () => {
+    if (!result || !aiInsight) return;
+    try {
+      setExportingDoc(true);
+      const { blob, documentId } = await exportSummaryDocx(
+        `Báo cáo phân tích ${baseName}`,
+        aiInsight,
+      );
+      setDocId(documentId);
+      downloadBlob(blob, `BaoCao_${baseName}.docx`);
+    } catch (err) {
+      setError(getApiMessage(err, "Không thể xuất file Word."));
+    } finally {
+      setExportingDoc(false);
+    }
+  };
+
   // -------------------------------------------------------
   // UPLOAD + PHÂN TÍCH
   // -------------------------------------------------------
@@ -194,6 +221,7 @@ function ExcelAnalysis() {
     setError("");
     setAiInsight("");
     setAiError("");
+    setAiPrompt("");
   };
 
   const handleAiInsight = async () => {
@@ -208,6 +236,7 @@ function ExcelAnalysis() {
         sheetName: result.sheetName,
         totalRows: result.totalRows,
         columns: result.columns,
+        userPrompt: aiPrompt.trim() || null,
       });
 
       setAiInsight(response.data.insight);
@@ -614,6 +643,12 @@ function ExcelAnalysis() {
               </button>
             </div>
 
+            <AiPromptBuilder
+              columns={result.columns.map((c) => c.name)}
+              value={aiPrompt}
+              onChange={setAiPrompt}
+            />
+
             {aiError && (
               <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                 {aiError}
@@ -623,6 +658,26 @@ function ExcelAnalysis() {
             {aiInsight && (
               <div className="mt-4 whitespace-pre-wrap rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-700">
                 {aiInsight}
+              </div>
+            )}
+
+            {aiInsight && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleExportWord()}
+                  disabled={exportingDoc}
+                  className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                >
+                  {exportingDoc ? "Đang xuất..." : "Xuất Word"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPptOpen(true)}
+                  className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                >
+                  Tạo PowerPoint
+                </button>
               </div>
             )}
           </section>
@@ -928,6 +983,14 @@ function ExcelAnalysis() {
             </div>
           </section>
         </div>
+      )}
+      {pptOpen && (
+        <PresentationModal
+          title={`Báo cáo phân tích ${baseName}`}
+          documentId={docId ?? undefined}
+          content={docId ? undefined : aiInsight}
+          onClose={() => setPptOpen(false)}
+        />
       )}
     </main>
   );

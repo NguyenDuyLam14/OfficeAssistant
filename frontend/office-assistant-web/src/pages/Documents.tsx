@@ -9,9 +9,12 @@ import {
   X,
   Sparkles,
   Download,
+  Presentation,
 } from "lucide-react";
 
 import SummaryModal from "../components/common/SummaryModal";
+
+import PresentationModal from "../components/presentation/PresentationModal";
 
 import {
   askDocument,
@@ -188,6 +191,8 @@ function Documents() {
   // =========================================================
   // STATE
   // =========================================================
+
+  const [pptDoc, setPptDoc] = useState<DocumentItem | null>(null);
 
   // Danh sách văn bản.
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
@@ -1495,6 +1500,18 @@ function Documents() {
 
                         <button
                           type="button"
+                          onClick={() => setPptDoc(document)}
+                          disabled={
+                            !document.content?.trim() && !document.hasFile
+                          }
+                          className="rounded-lg p-2 text-slate-500 hover:bg-blue-50 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-30"
+                          title="Tạo PowerPoint"
+                        >
+                          <Presentation size={17} />
+                        </button>
+
+                        <button
+                          type="button"
                           onClick={() => handleEdit(document)}
                           className="rounded-lg p-2 text-slate-500 hover:bg-blue-50 hover:text-blue-600"
                           title="Sửa văn bản"
@@ -1683,6 +1700,14 @@ function Documents() {
           load={summaryTarget.load}
           ask={summaryTarget.ask}
           onClose={() => setSummaryTarget(null)}
+        />
+      )}
+
+      {pptDoc && (
+        <PresentationModal
+          title={pptDoc.title}
+          documentId={pptDoc.documentId}
+          onClose={() => setPptDoc(null)}
         />
       )}
     </main>
