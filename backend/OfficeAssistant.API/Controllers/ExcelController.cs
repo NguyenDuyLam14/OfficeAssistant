@@ -408,7 +408,7 @@ public class ExcelController : ControllerBase
             var summary = BuildSummaryText(request);
 
             var insight = await _aiService.AnalyzeDataAsync(
-                summary, cancellationToken);
+                summary, userPrompt, cancellationToken);
 
             return Ok(new { insight });
         }
