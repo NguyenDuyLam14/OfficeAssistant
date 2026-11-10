@@ -166,3 +166,22 @@ export async function askFile(
 
   return response.data
 }
+
+export interface UploadSummaryResult extends SummaryResult {
+  fileName: string
+  text: string
+}
+
+export async function summarizeUploadedFile(
+  file: File,
+): Promise<UploadSummaryResult> {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const response = await api.post<UploadSummaryResult>(
+    '/Summary/upload',
+    formData,
+  )
+
+  return response.data
+}

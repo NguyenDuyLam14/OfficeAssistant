@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import UploadSummaryPanel from "../components/documents/UploadSummaryPanel";
 
 import {
   FileText,
@@ -1322,6 +1323,8 @@ function Documents() {
           />
         </section>
       )}
+
+      <UploadSummaryPanel onSaved={loadDocuments} />
 
       {/* =====================================================
           SEARCH + FILTER

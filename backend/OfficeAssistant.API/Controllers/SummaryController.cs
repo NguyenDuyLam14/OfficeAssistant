@@ -8,6 +8,8 @@ using OfficeAssistant.API.Data;
 using OfficeAssistant.API.Services.AI;
 using OfficeAssistant.API.Services.Files;
 
+using DocumentFormat.OpenXml.Packaging;
+
 namespace OfficeAssistant.API.Controllers;
 
 /// <summary>
@@ -88,6 +90,80 @@ public sealed class SummaryController : ControllerBase
         }
 
         return await SummarizeAsync(title, text, cancellationToken);
+    }
+
+    // POST api/Summary/upload  (form-data: file)
+    [HttpPost("upload")]
+    [RequestSizeLimit(10 * 1024 * 1024)]
+    public async Task<IActionResult> SummarizeUpload(
+        [FromForm] IFormFile file, CancellationToken cancellationToken)
+    {
+        if (file == null || file.Length == 0)
+            return BadRequest(new { message = "Vui lòng chọn file." });
+
+        if (file.Length > 10 * 1024 * 1024)
+            return BadRequest(new { message = "File không được vượt quá 10 MB." });
+
+        if (!LocalFileSearchService.IsSummarizable(file.FileName))
+            return BadRequest(new
+            {
+                message = "Hiện chỉ hỗ trợ file .docx, .txt, .md, .csv."
+            });
+
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        var temp = Path.Combine(Path.GetTempPath(), $"sum_{Guid.NewGuid():N}{ext}");
+        string text;
+
+        try
+        {
+            await using (var fs = new FileStream(temp, FileMode.Create))
+            {
+                await file.CopyToAsync(fs, cancellationToken);
+            }
+
+            text = await Task.Run(() => _files.ExtractText(temp), cancellationToken);
+        }
+        catch (Exception ex) when (
+            ex is IOException or InvalidDataException or OpenXmlPackageException)
+        {
+            _logger.LogWarning(ex, "Không đọc được file upload.");
+            return BadRequest(new
+            {
+                message = "Không đọc được file. File có thể bị lỗi hoặc đặt mật khẩu."
+            });
+        }
+        finally
+        {
+            try { System.IO.File.Delete(temp); } catch { }
+        }
+
+        var prepared = PrepareText(text, out var truncated);
+
+        if (prepared == null)
+            return BadRequest(new
+            {
+                message = "Nội dung quá ngắn hoặc trống, không cần tóm tắt."
+            });
+
+        try
+        {
+            var summary = await _ai.SummarizeDocumentAsync(
+                Path.GetFileNameWithoutExtension(file.FileName),
+                prepared, cancellationToken);
+
+            return Ok(new
+            {
+                summary,
+                truncated,
+                fileName = file.FileName,
+                text = prepared   // dùng cho "PPT từ nội dung gốc"
+            });
+        }
+        catch (Exception ex) when (
+            !(ex is OperationCanceledException && cancellationToken.IsCancellationRequested))
+        {
+            return AiFailure(ex);
+        }
     }
 
     // =========================================================
