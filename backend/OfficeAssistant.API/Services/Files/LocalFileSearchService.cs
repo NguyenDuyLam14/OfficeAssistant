@@ -3,6 +3,9 @@ using System.Text;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
 
+using UglyToad.PdfPig;
+using UglyToad.PdfPig.DocumentLayoutAnalysis.TextExtractor;
+
 namespace OfficeAssistant.API.Services.Files;
 
 public sealed record RootInfo(int Index, string Name);
@@ -53,6 +56,12 @@ public sealed class LocalFileSearchService
     private static readonly HashSet<string> TextExtensions =
         new(StringComparer.OrdinalIgnoreCase) { ".docx", ".txt", ".md", ".csv" };
 
+    // Các định dạng đọc được nội dung để tóm tắt (có cả PDF).
+    private static readonly HashSet<string> SummarizableExtensions =
+        new(StringComparer.OrdinalIgnoreCase) { ".docx", ".pdf", ".txt", ".md", ".csv" };
+
+    private const int MaxPdfChars = 50_000;
+
     private const long MaxContentBytes = 5 * 1024 * 1024;
     private const int MaxFilesScanned = 100_000;
     private const int MaxContentScans = 2000;
@@ -97,7 +106,7 @@ public sealed class LocalFileSearchService
         }).ToList();
 
     public static bool IsSummarizable(string path) =>
-        TextExtensions.Contains(Path.GetExtension(path));
+        SummarizableExtensions.Contains(Path.GetExtension(path));
 
     // ---------------------------------------------------------
     // Chuyển (rootIndex + đường dẫn tương đối) thành đường dẫn thật,
@@ -257,6 +266,11 @@ public sealed class LocalFileSearchService
         using var file = new FileStream(
             path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
 
+        if (extension == ".pdf")
+        {
+            return ExtractPdfText(file);
+        }
+
         if (extension == ".docx")
         {
             using var memory = new MemoryStream();
@@ -342,5 +356,40 @@ public sealed class LocalFileSearchService
         }
 
         return builder.ToString().Normalize(NormalizationForm.FormC);
+    }
+
+    // Đọc text theo thứ tự hiển thị; dừng sớm khi đủ dài
+    // (controller chỉ dùng 12.000 ký tự đầu).
+    private static string ExtractPdfText(Stream stream)
+    {
+        try
+        {
+            using var pdf = PdfDocument.Open(stream);
+            var builder = new StringBuilder();
+
+            foreach (var page in pdf.GetPages())
+            {
+                var pageText = ContentOrderTextExtractor.GetText(page);
+
+                if (!string.IsNullOrWhiteSpace(pageText))
+                {
+                    builder.AppendLine(pageText.Trim());
+                    builder.AppendLine();
+                }
+
+                if (builder.Length >= MaxPdfChars)
+                {
+                    break;
+                }
+            }
+
+            return builder.ToString().Trim();
+        }
+        catch (Exception ex)
+        {
+            // Đổi về InvalidDataException để controller trả thông báo thân thiện
+            // (PDF hỏng, đặt mật khẩu...).
+            throw new InvalidDataException("Không đọc được file PDF.", ex);
+        }
     }
 }

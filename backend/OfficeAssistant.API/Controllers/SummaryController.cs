@@ -107,7 +107,7 @@ public sealed class SummaryController : ControllerBase
         if (!LocalFileSearchService.IsSummarizable(file.FileName))
             return BadRequest(new
             {
-                message = "Hiện chỉ hỗ trợ file .docx, .txt, .md, .csv."
+                message = "Hiện chỉ hỗ trợ file .docx, .pdf, .txt, .md, .csv."
             });
 
         var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
@@ -142,7 +142,7 @@ public sealed class SummaryController : ControllerBase
         if (prepared == null)
             return BadRequest(new
             {
-                message = "Nội dung quá ngắn hoặc trống, không cần tóm tắt."
+                message = "Nội dung quá ngắn hoặc trống. Nếu là PDF dạng ảnh scan " + "thì chưa đọc được chữ trong ảnh."
             });
 
         try
@@ -248,7 +248,7 @@ public sealed class SummaryController : ControllerBase
         {
             return (string.Empty, string.Empty, BadRequest(new
             {
-                message = "Hiện chỉ hỗ trợ file .docx, .txt, .md, .csv."
+                message = "Hiện chỉ hỗ trợ file .docx, .pdf, .txt, .md, .csv."
             }));
         }
 

@@ -110,7 +110,7 @@ export default function UploadSummaryPanel({ onSaved }: Props) {
       <input
         ref={inputRef}
         type="file"
-        accept=".docx,.txt,.md,.csv"
+        accept=".docx,.pdf,.txt,.md,.csv"
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0];
@@ -143,7 +143,7 @@ export default function UploadSummaryPanel({ onSaved }: Props) {
           {loading ? "AI đang đọc và tóm tắt..." : "Chọn file để tóm tắt"}
         </button>
         <span className="text-xs text-slate-500">
-          Hỗ trợ .docx, .txt, .md, .csv — tối đa 10 MB
+          Hỗ trợ .docx, .pdf, .txt, .md, .csv — tối đa 10 MB
         </span>
       </div>
 

@@ -46,7 +46,7 @@ export interface SummaryResult {
 }
 
 // Định dạng backend đọc được nội dung để tóm tắt.
-export const SUMMARIZABLE_EXTENSIONS = ['.docx', '.txt', '.md', '.csv']
+export const SUMMARIZABLE_EXTENSIONS = ['.docx', '.pdf', '.txt', '.md', '.csv'] 
 
 export async function getRoots(): Promise<RootInfo[]> {
   const response = await api.get<RootInfo[]>('/LocalFiles/roots')
