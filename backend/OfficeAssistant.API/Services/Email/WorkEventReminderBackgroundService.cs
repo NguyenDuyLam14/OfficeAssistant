@@ -16,7 +16,7 @@ public sealed class WorkEventReminderBackgroundService : BackgroundService
     public const string Type24h = "Reminder24h";
     public const string Type1h = "Reminder1h";
 
-    private static readonly TimeSpan CheckInterval = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan CheckInterval = TimeSpan.FromMinutes(1);
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<WorkEventReminderBackgroundService> _logger;

@@ -21,6 +21,8 @@ import EmailCampaigns from "./pages/EmailCampaigns";
 
 import FileSearch from "./pages/FileSearch";
 
+import NotificationToaster from "./components/common/NotificationToaster";
+
 // ============================================================
 // LAYOUT CỦA ỨNG DỤNG
 // ============================================================
@@ -51,6 +53,7 @@ function MainLayout() {
         {/* Nội dung từng trang */}
         <Outlet />
       </div>
+      <NotificationToaster />
     </div>
   );
 }

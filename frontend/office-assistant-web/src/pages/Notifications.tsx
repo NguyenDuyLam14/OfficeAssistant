@@ -128,6 +128,7 @@ function Notifications() {
       );
 
       setUnreadCount((count) => Math.max(0, count - 1));
+      window.dispatchEvent(new Event("notifications:changed"));
     } catch (err) {
       console.error("Không thể đánh dấu đã đọc:", err);
       setError("Không thể cập nhật trạng thái thông báo.");
@@ -147,6 +148,7 @@ function Notifications() {
       );
 
       setUnreadCount(0);
+      window.dispatchEvent(new Event("notifications:changed"));
     } catch (err) {
       console.error("Không thể đánh dấu tất cả đã đọc:", err);
       setError("Không thể cập nhật trạng thái thông báo.");

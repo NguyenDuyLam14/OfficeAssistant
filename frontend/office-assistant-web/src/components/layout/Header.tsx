@@ -79,9 +79,14 @@ function Header({ sidebarOpen, onToggleSidebar }: HeaderProps) {
     void loadUnread();
     const timer = setInterval(() => void loadUnread(), 60_000);
 
+    // Cập nhật ngay khi có thông báo mới hoặc vừa đọc.
+    const handleChanged = () => void loadUnread();
+    window.addEventListener("notifications:changed", handleChanged);
+
     return () => {
       cancelled = true;
       clearInterval(timer);
+      window.removeEventListener("notifications:changed", handleChanged);
     };
   }, [location.pathname]);
 
