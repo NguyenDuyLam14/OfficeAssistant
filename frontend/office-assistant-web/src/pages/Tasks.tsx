@@ -10,11 +10,14 @@ import {
   RefreshCw,
   Trash2,
   X,
+  FileUp,
 } from "lucide-react";
 
 import api from "../services/api";
 
 import TaskFormModal from "../components/tasks/TaskFormModal";
+
+import ImportWordModal from "../components/tasks/ImportWordModal";
 
 // =========================================================
 // KIỂU DỮ LIỆU
@@ -134,6 +137,8 @@ function Tasks() {
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<CalendarEvent | null>(null);
+
+  const [importOpen, setImportOpen] = useState(false);
 
   // -------------------------------------------------------
   // Tạo 42 ô (6 tuần) của lưới tháng, bắt đầu từ Thứ Hai.
@@ -319,6 +324,14 @@ function Tasks() {
           >
             <Plus size={16} />
             Thêm công việc
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setImportOpen(true)}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            <FileUp size={16} /> Nhập từ Word
           </button>
 
           <button
@@ -630,6 +643,15 @@ function Tasks() {
           onSaved={() => {
             setFormOpen(false);
             setEditing(null);
+            void loadEvents();
+          }}
+        />
+      )}
+      {importOpen && (
+        <ImportWordModal
+          onClose={() => setImportOpen(false)}
+          onSaved={() => {
+            setImportOpen(false);
             void loadEvents();
           }}
         />

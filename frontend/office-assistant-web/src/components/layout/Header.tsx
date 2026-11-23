@@ -20,6 +20,10 @@ const PAGE_TITLES: Record<string, { title: string; subtitle: string }> = {
     title: "Tìm văn bản",
     subtitle: "Tìm file trên máy theo tên, loại, nội dung",
   },
+  "/reports": {
+    title: "Báo cáo PPT",
+    subtitle: "Tóm tắt và tạo slide báo cáo bằng AI",
+  },
   "/templates": { title: "Mẫu văn bản", subtitle: "Quản lý các mẫu văn bản" },
   "/emails": { title: "Email", subtitle: "Hộp thư Gmail và trợ lý AI" },
   "/emails/campaigns": {

@@ -230,7 +230,7 @@ public sealed class GmailWorkEventScanner
     /// Chuyển thời gian AI trích xuất thành UTC để lưu vào cơ sở dữ liệu.
     /// Nếu thời gian không có múi giờ, mặc định đó là giờ Việt Nam (UTC+7).
     /// </summary>
-    private static DateTime? ParseUtc(string? value)
+    public static DateTime? ParseUtc(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
         {

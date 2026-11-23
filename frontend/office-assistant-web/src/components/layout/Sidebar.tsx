@@ -10,6 +10,7 @@ import {
   Sparkles,
   Users,
   FolderSearch,
+  Presentation,
 } from "lucide-react";
 
 import { getCurrentUser } from "../../services/authService";
@@ -80,6 +81,13 @@ function Sidebar({ sidebarOpen }: SidebarProps) {
           to="/file-search"
           icon={<FolderSearch size={20} />}
           label="Tìm văn bản"
+          collapsed={!sidebarOpen}
+        />
+
+        <SidebarItem
+          to="/reports"
+          icon={<Presentation size={20} />}
+          label="Báo cáo PPT"
           collapsed={!sidebarOpen}
         />
 

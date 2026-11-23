@@ -23,6 +23,8 @@ import FileSearch from "./pages/FileSearch";
 
 import NotificationToaster from "./components/common/NotificationToaster";
 
+import Reports from "./pages/Reports";
+
 // ============================================================
 // LAYOUT CỦA ỨNG DỤNG
 // ============================================================
@@ -84,6 +86,8 @@ function App() {
             <Route path="/documents" element={<Documents />} />
 
             <Route path="/file-search" element={<FileSearch />} />
+
+            <Route path="/reports" element={<Reports />} />
 
             <Route path="/templates" element={<Templates />} />
 

@@ -79,9 +79,11 @@ public interface IAIService
         string question,
         CancellationToken cancellationToken = default);
 
-
-
     Task<SlideOutline> GenerateSlideOutlineAsync(
         string title, string content, int slideCount, string? audience,
+        CancellationToken cancellationToken = default);
+
+    Task<List<WorkEventExtractionResult>> ExtractEventsFromDocumentAsync(
+        string title, string content, DateTime todayVn,
         CancellationToken cancellationToken = default);
 }

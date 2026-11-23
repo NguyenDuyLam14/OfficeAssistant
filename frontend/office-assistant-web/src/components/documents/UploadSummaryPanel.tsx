@@ -8,20 +8,21 @@ import {
   X,
 } from "lucide-react";
 
-import PresentationModal from "../presentation/PresentationModal";
 import { getApiMessage } from "../../services/emailService";
 import { summarizeUploadedFile } from "../../services/fileService";
 import type { UploadSummaryResult } from "../../services/fileService";
 import { exportSummaryDocx } from "../../services/presentationService";
 
-type Props = {
-  onSaved: () => void | Promise<void>;
-};
-
-type PptSource = {
+// Nguồn để tạo PPT (export để Reports.tsx dùng lại).
+export type PptSource = {
   title: string;
   documentId?: number;
   content?: string;
+};
+
+type Props = {
+  onSaved: () => void | Promise<void>;
+  onPickSource: (source: PptSource) => void; // MỚI: báo nguồn lên trang cha
 };
 
 function downloadBlob(blob: Blob, fileName: string) {
@@ -35,7 +36,7 @@ function downloadBlob(blob: Blob, fileName: string) {
   URL.revokeObjectURL(url);
 }
 
-export default function UploadSummaryPanel({ onSaved }: Props) {
+export default function UploadSummaryPanel({ onSaved, onPickSource }: Props) {
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const [result, setResult] = useState<UploadSummaryResult | null>(null);
@@ -46,10 +47,7 @@ export default function UploadSummaryPanel({ onSaved }: Props) {
   // Id văn bản Word tóm tắt sau khi xuất (để làm PPT từ chính file đó).
   const [summaryDocId, setSummaryDocId] = useState<number | null>(null);
 
-  // Dữ liệu khác để làm PPT.
-  const [otherData, setOtherData] = useState("");
-
-  const [ppt, setPpt] = useState<PptSource | null>(null);
+  // (đã xóa: state otherData và state ppt)
 
   const baseName = result?.fileName.replace(/\.[^.]+$/, "") ?? "tai_lieu";
 
@@ -98,11 +96,10 @@ export default function UploadSummaryPanel({ onSaved }: Props) {
           <Sparkles size={22} />
         </div>
         <div>
-          <h2 className="text-lg font-bold text-slate-800">
-            Tóm tắt file & tạo báo cáo PowerPoint
-          </h2>
+          {/* ĐỔI: tiêu đề */}
+          <h2 className="text-lg font-bold text-slate-800">Tóm tắt file</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Tải file lên → AI tóm tắt → xuất Word → tạo PPT báo cáo.
+            Tải file lên → AI tóm tắt → xuất Word hoặc chọn làm nguồn cho PPT.
           </p>
         </div>
       </div>
@@ -185,73 +182,38 @@ export default function UploadSummaryPanel({ onSaved }: Props) {
               Xuất Word tóm tắt
             </button>
 
+            {/* ĐỔI: setPpt(...) -> onPickSource(...) */}
             <button
               type="button"
               onClick={() =>
-                setPpt(
+                onPickSource(
                   summaryDocId
-                    ? {
-                        title: `Tóm tắt ${baseName}`,
-                        documentId: summaryDocId,
-                      }
-                    : {
-                        title: `Tóm tắt ${baseName}`,
-                        content: result.summary,
-                      },
+                    ? { title: `Tóm tắt ${baseName}`, documentId: summaryDocId }
+                    : { title: `Tóm tắt ${baseName}`, content: result.summary },
                 )
               }
               className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
             >
               <Presentation size={16} />
-              Tạo PPT từ bản tóm tắt
+              Dùng bản tóm tắt làm nguồn PPT
             </button>
 
+            {/* ĐỔI: setPpt(...) -> onPickSource(...) */}
             <button
               type="button"
-              onClick={() => setPpt({ title: baseName, content: result.text })}
+              onClick={() =>
+                onPickSource({ title: baseName, content: result.text })
+              }
               className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100"
             >
               <Presentation size={16} />
-              Tạo PPT từ nội dung gốc
+              Dùng nội dung gốc làm nguồn PPT
             </button>
           </div>
         </div>
       )}
 
-      {/* PPT từ dữ liệu khác */}
-      <div className="mt-6 border-t border-slate-200 pt-5">
-        <p className="text-sm font-medium text-slate-700">
-          Hoặc tạo PPT từ dữ liệu khác
-        </p>
-        <textarea
-          rows={4}
-          value={otherData}
-          onChange={(e) => setOtherData(e.target.value)}
-          placeholder="Dán số liệu, ghi chú, nội dung báo cáo... (tối thiểu 50 ký tự)"
-          className="mt-2 w-full resize-y rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-        />
-        <button
-          type="button"
-          disabled={otherData.trim().length < 50}
-          onClick={() =>
-            setPpt({ title: "Báo cáo", content: otherData.trim() })
-          }
-          className="mt-2 inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <Presentation size={16} />
-          Tạo PPT từ dữ liệu này
-        </button>
-      </div>
-
-      {ppt && (
-        <PresentationModal
-          key={`${ppt.documentId ?? "c"}-${ppt.title}`}
-          title={ppt.title}
-          documentId={ppt.documentId}
-          content={ppt.content}
-          onClose={() => setPpt(null)}
-        />
-      )}
+      {/* (đã xóa: khối "Hoặc tạo PPT từ dữ liệu khác" và <PresentationModal />) */}
     </section>
   );
 }

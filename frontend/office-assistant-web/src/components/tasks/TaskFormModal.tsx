@@ -5,6 +5,8 @@ import { LoaderCircle, X } from "lucide-react";
 import api from "../../services/api";
 import { getApiMessage } from "../../services/emailService";
 
+import { toIso, toLocalInput } from "../../utils/datetime";
+
 export type EditableEvent = {
   id: number;
   title: string;
@@ -30,28 +32,6 @@ const EVENT_TYPES = [
   { value: "Appointment", label: "Lịch hẹn" },
   { value: "Other", label: "Khác" },
 ];
-
-// UTC từ backend -> giá trị cho <input type="datetime-local"> (giờ máy).
-function toLocalInput(value: string | null): string {
-  if (!value) return "";
-
-  const hasTimeZone = /([zZ]|[+-]\d{2}:\d{2})$/.test(value);
-  const date = new Date(hasTimeZone ? value : value + "Z");
-
-  if (Number.isNaN(date.getTime())) return "";
-
-  const p = (n: number) => String(n).padStart(2, "0");
-
-  return (
-    `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}` +
-    `T${p(date.getHours())}:${p(date.getMinutes())}`
-  );
-}
-
-// Giá trị datetime-local (giờ máy) -> ISO UTC gửi lên backend.
-function toIso(local: string): string | null {
-  return local ? new Date(local).toISOString() : null;
-}
 
 function TaskFormModal({ initial, onClose, onSaved }: TaskFormModalProps) {
   const [title, setTitle] = useState(initial?.title ?? "");

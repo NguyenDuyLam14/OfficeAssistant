@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import UploadSummaryPanel from "../components/documents/UploadSummaryPanel";
 
 import {
   FileText,
@@ -15,8 +14,6 @@ import {
 
 import SummaryModal from "../components/common/SummaryModal";
 
-import PresentationModal from "../components/presentation/PresentationModal";
-
 import {
   askDocument,
   askText,
@@ -29,6 +26,8 @@ import type { AnswerResult, SummaryResult } from "../services/fileService";
 import api from "../services/api";
 
 import axios from "axios";
+
+import { useNavigate } from "react-router-dom";
 
 // =========================================================
 // DỮ LIỆU API AI
@@ -193,7 +192,7 @@ function Documents() {
   // STATE
   // =========================================================
 
-  const [pptDoc, setPptDoc] = useState<DocumentItem | null>(null);
+  const navigate = useNavigate();
 
   // Danh sách văn bản.
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
@@ -1324,8 +1323,6 @@ function Documents() {
         </section>
       )}
 
-      <UploadSummaryPanel onSaved={loadDocuments} />
-
       {/* =====================================================
           SEARCH + FILTER
           ===================================================== */}
@@ -1503,7 +1500,11 @@ function Documents() {
 
                         <button
                           type="button"
-                          onClick={() => setPptDoc(document)}
+                          onClick={() =>
+                            navigate(
+                              `/reports?documentId=${document.documentId}`,
+                            )
+                          }
                           disabled={
                             !document.content?.trim() && !document.hasFile
                           }
@@ -1703,14 +1704,6 @@ function Documents() {
           load={summaryTarget.load}
           ask={summaryTarget.ask}
           onClose={() => setSummaryTarget(null)}
-        />
-      )}
-
-      {pptDoc && (
-        <PresentationModal
-          title={pptDoc.title}
-          documentId={pptDoc.documentId}
-          onClose={() => setPptDoc(null)}
         />
       )}
     </main>
