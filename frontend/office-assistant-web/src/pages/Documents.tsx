@@ -268,6 +268,7 @@ function Documents() {
 
   // Trạng thái đang gọi API tạo file Word.
   const [isGeneratingWord, setIsGeneratingWord] = useState(false);
+  const [isFilling, setIsFilling] = useState(false);
 
   // Lỗi riêng của chức năng xuất Word.
   const [wordError, setWordError] = useState("");
@@ -328,7 +329,7 @@ function Documents() {
         ? "Nhập yêu cầu (bước 3) hoặc điền ít nhất một trường (bước 2)."
         : "";
 
-  const isBusy = isGeneratingAI || isGeneratingWord;
+  const isBusy = isGeneratingAI || isGeneratingWord || isFilling;
 
   // Chèn một dòng gợi ý vào ô yêu cầu: "Thời gian: ".
   const appendHint = (hint: string) => {
@@ -493,6 +494,47 @@ function Documents() {
    * Frontend nhận file dạng Blob
    * và tự động tải xuống máy.
    */
+  const handleFillFields = async () => {
+    if (aiTemplateId === null) {
+      setWordError("Vui lòng chọn mẫu văn bản.");
+      return;
+    }
+    if (!aiPrompt.trim()) {
+      setWordError("Vui lòng nhập yêu cầu soạn thảo ở bước 3.");
+      return;
+    }
+
+    try {
+      setIsFilling(true);
+      setWordError("");
+      setAiError("");
+
+      const response = await api.post<{ values: Record<string, string> }>(
+        "/Word/fill-fields",
+        {
+          documentTemplateId: aiTemplateId,
+          documentType: aiDocumentType,
+          userPrompt: aiPrompt.trim(),
+          // Giữ lại những gì người dùng đã tự nhập.
+          fieldValues: filledFieldValues,
+        },
+      );
+
+      // Đổ kết quả vào các ô để người dùng sửa.
+      setFieldValues((current) => ({ ...current, ...response.data.values }));
+    } catch (error) {
+      console.error("Lỗi AI điền trường:", error);
+      setWordError(
+        axios.isAxiosError(error)
+          ? (error.response?.data?.message ??
+              "Không thể nhờ AI điền các trường.")
+          : "Không thể nhờ AI điền các trường.",
+      );
+    } finally {
+      setIsFilling(false);
+    }
+  };
+
   const handleGenerateAIWord = async () => {
     if (aiTemplateId === null) {
       setWordError("Vui lòng chọn mẫu văn bản trước khi xuất Word.");
@@ -1086,37 +1128,56 @@ function Documents() {
                 Mẫu này không có vùng nào cần điền.
               </p>
             ) : (
-              <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-                {templateFields.map((field, index) => (
-                  <div key={field.fieldId}>
-                    <label
-                      htmlFor={`field-${field.fieldId}`}
-                      className="mb-1 block text-xs font-medium text-slate-600"
-                    >
-                      Trường {index + 1}
-                    </label>
+              <>
+                <button
+                  type="button"
+                  onClick={() => void handleFillFields()}
+                  disabled={isBusy || !hasPrompt}
+                  className="mt-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isFilling
+                    ? "AI đang điền..."
+                    : "✨ AI điền các trường trống"}
+                </button>
 
-                    <p className="mb-1 text-xs italic text-slate-400">
-                      {field.context}
-                    </p>
+                {!hasPrompt && (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Nhập yêu cầu ở bước 3 trước để AI có thông tin điền.
+                  </p>
+                )}
 
-                    <input
-                      id={`field-${field.fieldId}`}
-                      type="text"
-                      value={fieldValues[field.fieldId] ?? ""}
-                      onChange={(event) =>
-                        setFieldValues((current) => ({
-                          ...current,
-                          [field.fieldId]: event.target.value,
-                        }))
-                      }
-                      disabled={isBusy}
-                      placeholder="Để trống để AI điền"
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
-                    />
-                  </div>
-                ))}
-              </div>
+                <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                  {templateFields.map((field, index) => (
+                    <div key={field.fieldId}>
+                      <label
+                        htmlFor={`field-${field.fieldId}`}
+                        className="mb-1 block text-xs font-medium text-slate-600"
+                      >
+                        Trường {index + 1}
+                      </label>
+
+                      <p className="mb-1 text-xs italic text-slate-400">
+                        {field.context}
+                      </p>
+
+                      <input
+                        id={`field-${field.fieldId}`}
+                        type="text"
+                        value={fieldValues[field.fieldId] ?? ""}
+                        onChange={(event) =>
+                          setFieldValues((current) => ({
+                            ...current,
+                            [field.fieldId]: event.target.value,
+                          }))
+                        }
+                        disabled={isBusy}
+                        placeholder="Để trống để AI điền"
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
           </div>
         )}

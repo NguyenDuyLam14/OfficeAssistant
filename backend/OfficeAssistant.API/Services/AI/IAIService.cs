@@ -41,8 +41,8 @@ public interface IAIService
     string templateName,
     string userPrompt,
     string analyzedTemplateText,
-    List<string> fieldIds
-    );
+    List<FieldHint> fields,
+    CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Nhận xét dữ liệu Excel dựa trên bản tóm tắt thống kê.

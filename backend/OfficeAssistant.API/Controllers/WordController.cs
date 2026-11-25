@@ -269,6 +269,108 @@ public class WordController : ControllerBase
     }
 
     /// <summary>
+    /// POST api/Word/fill-fields
+    /// AI điền các trường của mẫu và trả về để người dùng duyệt.
+    /// Không tạo file Word.
+    /// </summary>
+    [HttpPost("fill-fields")]
+    public async Task<IActionResult> FillFields(
+        FillFieldsRequest request, CancellationToken cancellationToken)
+    {
+        if (request.DocumentTemplateId <= 0)
+            return BadRequest(new { message = "DocumentTemplateId không hợp lệ." });
+
+        if (string.IsNullOrWhiteSpace(request.UserPrompt))
+            return BadRequest(new { message = "Vui lòng nhập yêu cầu soạn thảo." });
+
+        var template = await _context.DocumentTemplates
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x =>
+                x.DocumentTemplateId == request.DocumentTemplateId && x.IsActive,
+                cancellationToken);
+
+        if (template == null || string.IsNullOrWhiteSpace(template.FilePath))
+            return NotFound(new { message = "Mẫu không tồn tại hoặc chưa có file Word." });
+
+        var templatePath = Path.Combine(
+            _environment.ContentRootPath,
+            template.FilePath.Replace("/", Path.DirectorySeparatorChar.ToString()));
+
+        if (!System.IO.File.Exists(templatePath))
+            return NotFound(new { message = "File Word của mẫu không tồn tại." });
+
+        var tempDir = Path.Combine(_environment.ContentRootPath, "Storage", "Temp");
+        Directory.CreateDirectory(tempDir);
+        var tempPath = Path.Combine(tempDir, $"Fill_{Guid.NewGuid():N}.docx");
+
+        try
+        {
+            var analyzed = _wordTemplateService
+                .PrepareNaturalTemplateForAI(templatePath, tempPath);
+
+            if (analyzed.Fields.Count == 0)
+                return BadRequest(new
+                {
+                    message = "Không tìm thấy vùng cần AI điền trong mẫu Word."
+                });
+
+            // Giá trị người dùng đã tự nhập thì giữ nguyên, chỉ nhờ AI phần còn lại.
+            var known = (request.FieldValues ?? new())
+                .Where(x => !string.IsNullOrWhiteSpace(x.Value))
+                .ToDictionary(x => x.Key, x => x.Value.Trim());
+
+            var hints = _wordTemplateService
+                .GetTemplateFields(templatePath)
+                .Where(f => !known.ContainsKey(f.FieldId))
+                .Select(f => new FieldHint(
+                    f.FieldId, f.Context, f.OriginalText.Length))
+                .ToList();
+
+            var prompt = request.UserPrompt.Trim();
+
+            if (known.Count > 0)
+            {
+                prompt += "\n\nCác field người dùng đã tự nhập " +
+                          "(không cần điền lại, dùng làm ngữ cảnh):\n" +
+                          string.Join("\n", known.Select(x => $"{x.Key} = {x.Value}"));
+            }
+
+            var values = new Dictionary<string, string>(known);
+
+            if (hints.Count > 0)
+            {
+                var filled = await _aiService.GenerateNaturalTemplateFieldsAsync(
+                    request.DocumentType, template.TemplateName, prompt,
+                    analyzed.TemplateText, hints, cancellationToken);
+
+                foreach (var item in filled)
+                    values[item.Key] = item.Value;
+            }
+
+            return Ok(new { values });
+        }
+        catch (GeminiQuotaException ex)
+        {
+            return StatusCode(429, new
+            {
+                message = "AI đang tạm hết lượt sử dụng. Vui lòng thử lại sau.",
+                retryAfterUtc = ex.RetryAfterUtc
+            });
+        }
+        catch (Exception ex) when (
+            !(ex is OperationCanceledException && cancellationToken.IsCancellationRequested))
+        {
+            Console.WriteLine(ex);
+            return StatusCode(500, new { message = "Không thể nhờ AI điền các trường." });
+        }
+        finally
+        {
+            try { if (System.IO.File.Exists(tempPath)) System.IO.File.Delete(tempPath); }
+            catch { }
+        }
+    }
+
+    /// <summary>
     /// AI tự động soạn nội dung theo yêu cầu người dùng,
     /// sau đó áp dụng nội dung vào Word template
     /// và trả về file .docx hoàn chỉnh.
@@ -434,7 +536,6 @@ public class WordController : ControllerBase
 
             if (missingIds.Count > 0)
             {
-                // Cho AI biết các giá trị đã có để nội dung nhất quán.
                 var known = string.Join("\n",
                     userValues.Select(x => $"{x.Key} = {x.Value}"));
 
@@ -443,12 +544,19 @@ public class WordController : ControllerBase
                     : $"{request.UserPrompt}\n\nCác field người dùng đã tự nhập " +
                       $"(không cần điền lại, hãy dùng làm ngữ cảnh):\n{known}";
 
+                var hints = _wordTemplateService
+                    .GetTemplateFields(templateFilePath)
+                    .Where(f => missingIds.Contains(f.FieldId))
+                    .Select(f => new FieldHint(
+                        f.FieldId, f.Context, f.OriginalText.Length))
+                    .ToList();
+
                 var aiValues = await _aiService.GenerateNaturalTemplateFieldsAsync(
                     request.DocumentType,
                     template.TemplateName,
                     prompt,
                     analyzedTemplate.TemplateText,
-                    missingIds);
+                    hints);
 
                 foreach (var item in aiValues)
                 {
@@ -655,5 +763,13 @@ public class GenerateWordFromAIRequest
     /// <summary>
     /// Giá trị người dùng tự nhập: key = "[F001]".
     /// </summary>
+    public Dictionary<string, string>? FieldValues { get; set; }
+}
+
+public class FillFieldsRequest
+{
+    public int DocumentTemplateId { get; set; }
+    public string DocumentType { get; set; } = string.Empty;
+    public string UserPrompt { get; set; } = string.Empty;
     public Dictionary<string, string>? FieldValues { get; set; }
 }
